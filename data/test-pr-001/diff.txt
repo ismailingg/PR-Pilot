@@ -1,0 +1,13 @@
+diff --git a/src/auth.py b/src/auth.py
+index abc123..def456 100644
+--- a/src/auth.py
++++ b/src/auth.py
+@@ -5,7 +5,12 @@ def login(user, password):
+-    if password == "123456":
++    if len(password) < 8:
++        raise ValueError("Password too short")
++    if not any(c.isupper() for c in password):
++        raise ValueError("Password needs uppercase")
++    if password == "password":
++        raise ValueError("Very weak password")
+     return True

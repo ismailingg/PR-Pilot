@@ -5,7 +5,10 @@ description = "PRtool using crewAI"
 authors = [{ name = "Your Name", email = "you@example.com" }]
 requires-python = ">=3.10,<3.14"
 dependencies = [
-    "crewai[tools]==1.8.0"
+    "crewai[tools]==1.8.0",
+    "pydantic>=2.11.10",
+    "python-dotenv>=1.1.1",
+    "structlog>=25.5.0",
 ]
 
 [project.scripts]
@@ -22,3 +25,10 @@ build-backend = "hatchling.build"
 
 [tool.crewai]
 type = "crew"
+
+[dependency-groups]
+dev = [
+    "black>=26.1.0",
+    "pytest>=9.0.2",
+    "ruff>=0.14.14",
+]
