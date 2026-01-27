@@ -1,0 +1,41 @@
+extraction_task:
+  description: >
+    Analyze the GitHub issue and PR description for repository {repo_name}. 
+    Identify the primary goal of the changes and list any specific 
+    acceptance criteria or risks mentioned by the author.
+  expected_output: >
+    A structured IntentSummary containing the goal, 
+    a list of success criteria, and a list of identified risks.
+  agent: intent_extractor
+
+review_task:
+  description: >
+    As a Senior {tech_stack} Engineer, perform a surgical review of the 
+    provided code diff. Look for bugs, unoptimized logic, and framework-specific 
+    violations unique to {tech_stack}. You must cite file paths and 
+    line numbers for every finding.
+  expected_output: >
+    A list of CodeFinding objects, each including the file path, 
+    line numbers, severity level, and a specific suggestion for a fix.
+  agent: diff_reviewer
+
+verification_task:
+  description: >
+    Compare the IntentSummary from the extractor with the CodeFindings from 
+    the reviewer. Determine if the current code changes actually fulfill 
+    the requirements of the issue without introducing breaking regressions.
+  expected_output: >
+    A DetailedReview scorecard with quality and security scores (0-10) 
+    and an explanation of any gaps between the intent and the code.
+  agent: verifier
+
+decision_task:
+  description: >
+    Review the final audit from the verifier and apply the project's 
+    safety policies. Decide if the PR is ready to merge, needs 
+    changes, or must be blocked. Draft a professional GitHub comment 
+    summarizing the crew's findings for the developer.
+  expected_output: >
+    A ReviewVerdict object with a clear merge status (yes/no), 
+    confidence score, and a markdown-formatted comment draft.
+  agent: decider
