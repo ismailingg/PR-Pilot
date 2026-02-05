@@ -1,41 +1,50 @@
+
 extraction_task:
   description: >
-    Analyze the GitHub issue and PR description for repository {repo_name}. 
-    Identify the primary goal of the changes and list any specific 
-    acceptance criteria or risks mentioned by the author.
+    Analyze the GitHub issue and PR description for the test case {test_case}.
+    Use your tools to read the files. Identify the primary goal and list 
+    specific acceptance criteria or risks.
   expected_output: >
-    A structured IntentSummary containing the goal, 
-    a list of success criteria, and a list of identified risks.
+    A structured IntentSummary object containing the goal, 
+    acceptance_criteria, and risks_mentioned.
   agent: intent_extractor
 
 review_task:
   description: >
     As a Senior {tech_stack} Engineer, perform a surgical review of the 
-    provided code diff. Look for bugs, unoptimized logic, and framework-specific 
-    violations unique to {tech_stack}. You must cite file paths and 
-    line numbers for every finding.
+    code diff for {test_case}. Find bugs, unoptimized logic, and framework-specific 
+    violations. You MUST cite the filename and line numbers for every finding.
   expected_output: >
-    A list of CodeFinding objects, each including the file path, 
-    line numbers, severity level, and a specific suggestion for a fix.
+    A detailed list of code findings including filename, line numbers, 
+    severity, and suggestions.
   agent: diff_reviewer
 
 verification_task:
   description: >
-    Compare the IntentSummary from the extractor with the CodeFindings from 
-    the reviewer. Determine if the current code changes actually fulfill 
-    the requirements of the issue without introducing breaking regressions.
+    Compare the IntentSummary with the findings from the diff_reviewer. 
+    Fill out the CodeReviewReport. You must decide if the implementation 
+    actually matches the goal and assign quality and security scores.
   expected_output: >
-    A DetailedReview scorecard with quality and security scores (0-10) 
-    and an explanation of any gaps between the intent and the code.
+    A complete CodeReviewReport object including the nested IntentSummary, 
+    a list of CodeFindings, and numerical scores.
   agent: verifier
 
 decision_task:
   description: >
-    Review the final audit from the verifier and apply the project's 
-    safety policies. Decide if the PR is ready to merge, needs 
-    changes, or must be blocked. Draft a professional GitHub comment 
-    summarizing the crew's findings for the developer.
+    Review the CodeReviewReport and apply a strict 'Safety First' policy. 
+    Decide if this PR is ready to merge. Draft a professional, encouraging, 
+    yet firm GitHub comment that summarizes all findings.
   expected_output: >
-    A ReviewVerdict object with a clear merge status (yes/no), 
-    confidence score, and a markdown-formatted comment draft.
+    A ReviewVerdict object with solves_issue (yes/no/partial), 
+    confidence (0.0-1.0), and the full comment_draft in Markdown.
   agent: decider
+
+scouting_task:
+  description: >
+    Scan the file paths and imports in the diff for {test_case}. 
+    Identify the programming languages, frameworks, and build tools used. 
+    Estimate how complex this review will be based on the number of files touched.
+  expected_output: >
+    A ProjectContext object containing the detected tech_stack, 
+    complexity_level, and file count.
+  agent: scout

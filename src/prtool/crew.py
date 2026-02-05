@@ -1,64 +1,74 @@
 from crewai import Agent, Crew, Process, Task
+from prtool.tools.custom_tool import Read_PR_Diff, ReadLocalPRBody, ReadLocalIssue, FormatReviewComment
 from crewai.project import CrewBase, agent, crew, task
-from crewai.agents.agent_builder.base_agent import BaseAgent
-from typing import List
-# If you want to run a snippet of code before or after the crew starts,
-# you can use the @before_kickoff and @after_kickoff decorators
-# https://docs.crewai.com/concepts/crews#example-crew-class-with-decorators
+from prtool.schemas import CodeReviewReport, ReviewVerdict, IntentSummary, CodeFinding
 
 @CrewBase
-class Prtool():
-    """Prtool crew"""
-
-    agents: List[BaseAgent]
-    tasks: List[Task]
-
-    # Learn more about YAML configuration files here:
-    # Agents: https://docs.crewai.com/concepts/agents#yaml-configuration-recommended
-    # Tasks: https://docs.crewai.com/concepts/tasks#yaml-configuration-recommended
-    
-    # If you would like to add tools to your agents, you can learn more about it here:
-    # https://docs.crewai.com/concepts/agents#agent-tools
+class PrToolCrew():
+    agents_config = 'config/agents.yaml'
+    tasks_config = 'config/tasks.yaml'
     @agent
-    def researcher(self) -> Agent:
+    def intent_etractor(self)->Agent:
         return Agent(
-            config=self.agents_config['researcher'], # type: ignore[index]
-            verbose=True
+            config = self.agents_config['intent_extractor'],
+            tools = [ReadLocalPRBody, ReadLocalIssue],
+            verbose = True
         )
-
     @agent
-    def reporting_analyst(self) -> Agent:
+    def diff_reviewer(self)->Agent:
         return Agent(
-            config=self.agents_config['reporting_analyst'], # type: ignore[index]
-            verbose=True
+            config = self.agents_config['diff_reviewer'],
+            tools = [Read_PR_Diff],
+            verbose = True
         )
-
-    # To learn more about structured task outputs,
-    # task dependencies, and task callbacks, check out the documentation:
-    # https://docs.crewai.com/concepts/tasks#overview-of-a-task
+    @agent
+    def verifier(self)->Agent:
+        return Agent(
+            config = self.agents_config['verifier'],
+            verbose = True
+        )
+    @agent
+    def decider(self)->Agent:
+        return Agent(
+            config = self.agents_config['decider'],
+            verbose = True
+        )
+    @agent
+    def scout(self)->Agent:
+        return Agent(
+            config = self.agents_config['scout'],
+            tools = [Read_PR_Diff],
+            verbose = True
+        )
     @task
-    def research_task(self) -> Task:
+    def extraction_task(self)->Task:
         return Task(
-            config=self.tasks_config['research_task'], # type: ignore[index]
+            config = self.tasks_config['extraction_task'],
+            verbose = True
         )
-
     @task
-    def reporting_task(self) -> Task:
+    def review_task(self)->Task:
         return Task(
-            config=self.tasks_config['reporting_task'], # type: ignore[index]
-            output_file='report.md'
+            config = self.tasks_config['review_task'],
+            verbose = True
         )
-
+    @task
+    def verification_task(self)->Task:
+        return Task(
+            config = self.tasks_config['verification_task'],\
+            output_pydantic = CodeReviewReport
+        )
+    @task
+    def decision_task(self)->Task:
+        return Task(
+            config = self.tasks_config['decision_task'],
+            output_pydantic = ReviewVerdict
+        )
     @crew
-    def crew(self) -> Crew:
-        """Creates the Prtool crew"""
-        # To learn how to add knowledge sources to your crew, check out the documentation:
-        # https://docs.crewai.com/concepts/knowledge#what-is-knowledge
-
+    def crew(self)->Crew:
         return Crew(
-            agents=self.agents, # Automatically created by the @agent decorator
-            tasks=self.tasks, # Automatically created by the @task decorator
-            process=Process.sequential,
-            verbose=True,
-            # process=Process.hierarchical, # In case you wanna use that instead https://docs.crewai.com/how-to/Hierarchical/
+            agents = self.agents,
+            tasks = self.tasks,
+            process = Process.sequential,
+            verbose = True
         )

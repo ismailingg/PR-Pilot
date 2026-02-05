@@ -28,3 +28,8 @@ class ReviewVerdict(BaseModel):
     summary: str = Field(..., description="One-sentence executive summary")
     comment_draft: str = Field(..., description="The full markdown text for the GitHub comment")
     
+class ProjectContext(BaseModel):
+    tech_stack: str = Field(..., description="The primary languages and frameworks detected (e.g. 'Node.js/React', 'Python/Django')")
+    complexity_level: str = Field(..., pattern="^(low|medium|high)$", description="Estimated complexity of the changes")
+    files_affected: int = Field(..., description="Approximate number of files changed")
+    
