@@ -12,4 +12,43 @@ def run():
         sys.exit(1)
     
     test_case_id = sys.argv[1]
+    data_path = Path(f"data/{test_case_id}")
+    if not data_path.exists():
+        print(f"❌ Error: Test case folder '{data_path}' not found.")
+        sys.exit(1)
     
+    inputs = {
+        "test_case": test_case_id
+        "data_path": data_path
+        "repo_name": "MergeMate-Lab"
+        "issue_number": "001"
+    }
+    print(f"\n{'='*60}")
+    print(f"🚀 STARTING PHASE 1: THE BRAIN TEST")
+    print(f"📂 Folder: data/{test_case_id}")
+    print(f"⏰ Time: {datetime.now().strftime('%H:%M:%S')}")
+    
+    try:
+       
+        result = PrToolCrew().crew().kickoff(inputs=inputs)
+
+        
+        print("\n" + "✅" + " ANALYSIS COMPLETE " + "✅")
+        
+        print("\n[1] MACHINE-READABLE VERDICT (JSON)")
+        print("-" * 40)
+       
+        print(json.dumps(result.to_dict(), indent=2))
+
+       
+        print("\n[2] PROPOSED GITHUB COMMENT")
+        print("-" * 40)
+        print(result.raw) 
+        print("-" * 40)
+
+    except Exception as e:
+        print(f"\n💥 CRITICAL ERROR during review: {e}")
+        sys.exit(1)
+        
+if __name__ == "__main__":
+    run()

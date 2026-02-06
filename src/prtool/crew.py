@@ -8,6 +8,13 @@ class PrToolCrew():
     agents_config = 'config/agents.yaml'
     tasks_config = 'config/tasks.yaml'
     @agent
+    def scout(self)->Agent:
+        return Agent(
+            config = self.agents_config['scout'],
+            tools = [Read_PR_Diff],
+            verbose = True
+        )
+    @agent
     def intent_etractor(self)->Agent:
         return Agent(
             config = self.agents_config['intent_extractor'],
@@ -33,13 +40,7 @@ class PrToolCrew():
             config = self.agents_config['decider'],
             verbose = True
         )
-    @agent
-    def scout(self)->Agent:
-        return Agent(
-            config = self.agents_config['scout'],
-            tools = [Read_PR_Diff],
-            verbose = True
-        )
+
     @task
     def extraction_task(self)->Task:
         return Task(
@@ -50,12 +51,14 @@ class PrToolCrew():
     def review_task(self)->Task:
         return Task(
             config = self.tasks_config['review_task'],
+            context=[self.scouting_task()],
             verbose = True
         )
     @task
     def verification_task(self)->Task:
         return Task(
-            config = self.tasks_config['verification_task'],\
+            config = self.tasks_config['verification_task'],
+            context=[self.scouting_task(), self.extraction_task(), self.review_task()],
             output_pydantic = CodeReviewReport
         )
     @task
@@ -63,6 +66,12 @@ class PrToolCrew():
         return Task(
             config = self.tasks_config['decision_task'],
             output_pydantic = ReviewVerdict
+        )
+    @task 
+    def scouting_task(self)->Task:
+        return Task(
+            config = self.tasks_config['scouting_task'],
+            output_pydantic = ProjectContext
         )
     @crew
     def crew(self)->Crew:
