@@ -45,4 +45,4 @@ class FormatReviewComment(BaseTool):
 ### 🤖 MergeMate Phase 1 Review
 **Verdict:** {verdict.upper()} | **Quality:** {quality}/10
 
-**Summary:** {summary}
+**Summary:** {summary} """

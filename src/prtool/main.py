@@ -1,8 +1,9 @@
 import sys
 import os
 import json
-import datetime from datetime
+from datetime import datetime
 from prtool.crew import PrToolCrew
+from pathlib import Path
 
 def run():
     if len(sys.argv) != 2:
@@ -18,10 +19,11 @@ def run():
         sys.exit(1)
     
     inputs = {
-        "test_case": test_case_id
-        "data_path": data_path
-        "repo_name": "MergeMate-Lab"
-        "issue_number": "001"
+        "test_case": test_case_id,
+        "data_path": str(data_path),
+        "repo_name": "MergeMate-Lab",
+        "issue_number": "001",
+        "tech_stack": "Detected Technology"
     }
     print(f"\n{'='*60}")
     print(f"🚀 STARTING PHASE 1: THE BRAIN TEST")
