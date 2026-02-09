@@ -1,3 +1,9 @@
+import os
+# Suppress LiteLLM's noisy proxy/logging errors
+os.environ.setdefault("LITELLM_LOG", "ERROR")
+# Also try disabling the standard logging payload that triggers proxy imports
+os.environ.setdefault("LITELLM_TURN_OFF_MESSAGE_LOGGING", "true")
+
 import sys
 import os
 import json

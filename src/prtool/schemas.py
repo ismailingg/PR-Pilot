@@ -1,13 +1,18 @@
 from pydantic import BaseModel,Field
 from typing import List, Optional
+from enum import Enum
+
+class VerdictStatus(str, Enum):
+    MERGE = "merge"
+    BLOCK = "block"
+    ADVISE = "merge_with_advice"
 
 class CodeFinding(BaseModel): #indiviual code issues
     filename: str= Field(...,description="The filename of the code that has the issue")
     line_start: Optional[int] = Field(None,description="The starting line number of the issue")
     line_end: Optional[int]= Field(None,description="The ending line number of the issue")
-    severity: str = Field(...,pattern="^(low|medium|high|critical)$", Description="The severity of the issue")
-    description: str = Field(...,Description="A detailed description of the issue")
-    suggestion: Optional[str] = Field(None,Description="A suggestion for fixing the issue")
+    severity: str = Field(..., pattern="^(low|medium|high|critical|Low|Medium|High|Critical)$", description="The severity of the issue")   
+    suggestion: Optional[str] = Field(None,description="A suggestion for fixing the issue")
 
 class IntentSummary(BaseModel): #What the pr is trying to do
     goal: str = Field(...,description="The goal of the PR")
@@ -23,10 +28,10 @@ class CodeReviewReport(BaseModel): #Report on the code review
     security_score: float = Field(..., ge=0.0, le=10.0, description="Security health (0-10)")
 
 class ReviewVerdict(BaseModel):
-    solves_issue: str = Field(..., pattern="^(yes|partial|no)$")
-    confidence: float = Field(..., ge=0.0, le=1.0)
-    summary: str = Field(..., description="One-sentence executive summary")
-    comment_draft: str = Field(..., description="The full markdown text for the GitHub comment")
+    verdict: VerdictStatus = Field(..., description="The final decision: merge, block, or merge_with_advice")
+    confidence: float = Field(..., ge=0, le=1)
+    summary: str = Field(..., description="A summary of why this verdict was chosen")
+    comment_draft: str = Field(..., description="The GitHub comment. Use literal '\\n' for newlines.")
     
 class ProjectContext(BaseModel):
     tech_stack: str = Field(..., description="The primary languages and frameworks detected (e.g. 'Node.js/React', 'Python/Django')")
