@@ -13,7 +13,9 @@ review_task:
   description: >
     As a Senior {tech_stack} Engineer, perform a surgical review of the 
     code diff for {test_case}. Find bugs, unoptimized logic, and framework-specific 
-    violations. You MUST cite the filename and line numbers for every finding.
+    violations. 
+    When the diff removes bad behavior (e.g. hardcoded password) and adds validation, do not report the new validation logic as ‘hardcoded’ or ‘weak’ if it is implementing the stated requirements.
+    You MUST cite the filename and line numbers for every finding.
   expected_output: >
     A detailed list of code findings including filename, line numbers, 
     severity, and suggestions.
@@ -22,6 +24,7 @@ review_task:
 verification_task:
   description: >
     Compare the IntentSummary with the findings from the diff_reviewer. 
+    Your job is to decide whether the current diff implements the goal and acceptance criteria. Distinguish between: (a) code that enforces a rule (e.g. rejecting weak passwords) vs (b) code that is a vulnerability. Only treat (b) as blocking.
     Fill out the CodeReviewReport. You must decide if the implementation 
     actually matches the goal and assign quality and security scores.
   expected_output: >
@@ -31,8 +34,11 @@ verification_task:
 
 decision_task:
   description: >
-    Review the CodeReviewReport and apply a strict 'Safety First' policy. 
-    Decide if this PR is ready to merge. Draft a professional, encouraging, 
+    Review the CodeReviewReport and apply a Safety first, but merge when the acceptance criteria are clearly met and there are no critical security defects policy. 
+    Decide if this PR is ready to merge. 
+    solves_issue: yes should be used when the diff implements the required behavior, 
+    even if the review found style/maintainability suggestions.
+    Draft a professional, encouraging, 
     yet firm GitHub comment that summarizes all findings.
   expected_output: >
     A ReviewVerdict object with solves_issue (yes/no/partial), 
