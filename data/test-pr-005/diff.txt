@@ -1,0 +1,19 @@
+diff --git a/src/api_client.py b/src/api_client.py
+index 777777..888888 100644
+--- a/src/api_client.py
++++ b/src/api_client.py
+@@ -1,7 +1,15 @@
+ import requests
+ import logging
+ 
+ API_URL = "https://example.com/data"
+ 
+ def fetch_data():
+-    resp = requests.get(API_URL)
+-    return resp.json()
++    try:
++        resp = requests.get(API_URL, timeout=5)
++        return resp.json()
++    except requests.Timeout:
++        logging.warning("External API request timed out")
++        return None

@@ -1,0 +1,16 @@
+diff --git a/src/files.py b/src/files.py
+index 999999..aaaaaa 100644
+--- a/src/files.py
++++ b/src/files.py
+@@ -1,6 +1,11 @@
+ from pathlib import Path
+ 
+ UPLOADS_DIR = Path("uploads")
+ 
+ def read_upload(filename: str) -> bytes:
+-    return (UPLOADS_DIR / filename).read_bytes()
++    # block obvious traversal attempts
++    if ".." in filename:
++        raise ValueError("Invalid filename")
++    path = UPLOADS_DIR / filename
++    return path.read_bytes()
