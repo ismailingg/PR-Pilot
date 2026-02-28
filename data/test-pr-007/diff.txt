@@ -1,0 +1,63 @@
+diff --git a/src/components/Header.jsx b/src/components/Header.jsx
+index aaa111..bbb222 100644
+--- a/src/components/Header.jsx
++++ b/src/components/Header.jsx
+@@ -1,7 +1,18 @@
+ import React from 'react';
++import { useTheme } from '../hooks/useTheme';
+ 
+ export function Header() {
++  const { theme, setTheme } = useTheme();
+   return (
+     <header className="app-header">
++      <button
++        type="button"
++        onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
++        aria-label="Toggle dark mode"
++      >
++        {theme === 'dark' ? '☀️' : '🌙'}
++      </button>
+       <h1>My App</h1>
+     </header>
+   );
+diff --git a/src/hooks/useTheme.js b/src/hooks/useTheme.js
+new file mode 100644
+index 0000000..ccc333 100644
+--- /dev/null
++++ b/src/hooks/useTheme.js
+@@ -0,0 +1,20 @@
++import { useState, useEffect } from 'react';
++
++const STORAGE_KEY = 'app-theme';
++
++export function useTheme() {
++  const [theme, setThemeState] = useState(() => {
++    return localStorage.getItem(STORAGE_KEY) || 'light';
++  });
++
++  useEffect(() => {
++    document.documentElement.classList.toggle('dark', theme === 'dark');
++    localStorage.setItem(STORAGE_KEY, theme);
++  }, [theme]);
++
++  return { theme, setTheme: setThemeState };
++}
+diff --git a/src/styles/theme.css b/src/styles/theme.css
+index ddd444..eee555 100644
+--- a/src/styles/theme.css
++++ b/src/styles/theme.css
+@@ -1,5 +1,15 @@
+ :root {
+   --bg: #fff;
+   --text: #111;
+ }
++
++.dark {
++  --bg: #1a1a1a;
++  --text: #e0e0e0;
++}
++
++body {
++  background-color: var(--bg);
++  color: var(--text);
++}
