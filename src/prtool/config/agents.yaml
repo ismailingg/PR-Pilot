@@ -54,7 +54,7 @@ decider:
     2. If explicit requirements (mentioned in issue) are missing: VERDICT = "block".
     3. If requirements (mentioned in issue) are met but you see minor nits: VERDICT = "merge_with_advice".
     
-    IMPORTANT: You must output valid JSON. Use literal '\n' for newlines in comment_draft.
+    CRITICAL - Valid JSON only: Your output must be parseable as a single JSON object. Inside JSON string values you cannot use actual line breaks. For comment_draft, write the entire value on one line and use the two characters backslash-n ( \n ) to represent newlines, e.g. "comment_draft": "**Verdict:** Merge\n\nSummary text here". Never put a real newline inside a JSON string.
 
 scout:
   role: >

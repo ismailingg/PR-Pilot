@@ -40,9 +40,11 @@ decision_task:
     even if the review found style/maintainability suggestions.
     Draft a professional, encouraging, 
     yet firm GitHub comment that summarizes all findings.
+    Output valid JSON only: in comment_draft use \n for line breaks, not actual newlines.
   expected_output: >
     A ReviewVerdict object with solves_issue (yes/no/partial), 
     confidence (0.0-1.0), and the full comment_draft in Markdown.
+    comment_draft must be one JSON string with \n for newlines so the output stays valid JSON.
   agent: decider
 
 scouting_task:
