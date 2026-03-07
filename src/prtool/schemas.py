@@ -1,4 +1,4 @@
-from pydantic import BaseModel,Field
+from pydantic import BaseModel, Field, field_validator
 from typing import List, Optional
 from enum import Enum
 
@@ -25,6 +25,16 @@ class CodeFinding(BaseModel):  # individual code issues
         description="Severity of the issue. Use exactly one of: low, medium, high, critical.",
     )
     suggestion: Optional[str] = Field(None, description="A suggestion for fixing the issue")
+
+    @field_validator("severity", mode="before")
+    @classmethod
+    def coerce_severity(cls, v: object) -> str:
+        """Map 'Informational' / 'info' from the agent to 'low' (mildest level)."""
+        if isinstance(v, str):
+            normalized = v.strip().lower()
+            if normalized in ("informational", "info"):
+                return "low"
+        return v
 
 class IntentSummary(BaseModel): #What the pr is trying to do
     goal: str = Field(...,description="The goal of the PR")

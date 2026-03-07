@@ -5,8 +5,10 @@ extraction_task:
     Use your tools to read the files. Identify the primary goal and list 
     specific acceptance criteria or risks.
   expected_output: >
-    A structured IntentSummary object containing the goal, 
+    A structured IntentSummary object containing the goal,
     acceptance_criteria, and risks_mentioned.
+    acceptance_criteria must be a JSON array of plain strings
+    (e.g. ["criterion 1", "criterion 2"]), not objects.
   agent: intent_extractor
 
 review_task:

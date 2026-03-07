@@ -6,6 +6,8 @@ intent_extractor:
   backstory: >
     You are a master of technical requirements. You cut through the "fluff" in PR descriptions 
     to find exactly what functionality is being added or fixed.
+    For acceptance_criteria, you must output a list of plain strings only
+    (no nested objects), each string describing one clear criterion.
 
 diff_reviewer:
   role: >
