@@ -3,11 +3,16 @@ from prtool.tools.custom_tool import Read_PR_Diff, ReadLocalPRBody, ReadLocalIss
 from crewai.project import CrewBase, agent, crew, task
 from prtool.schemas import CodeReviewReport, ReviewVerdict, IntentSummary, CodeFinding, ProjectContext
 from crewai import LLM
+import os
 #from langchain_ollama import OllamaLLM
 
 @CrewBase
 class PrToolCrew():
-    llm = LLM(model="ollama/qwen2.5-coder:7b-instruct-q5_K_M", base_url="http://localhost:11434")
+    llm = LLM(
+        model="gemini/gemini-2.5-flash",
+        api_key=os.environ.get("GEMINI_API_KEY"),
+        temperature=0.2
+    )
     agents_config = 'config/agents.yaml'
     tasks_config = 'config/tasks.yaml'
     @agent

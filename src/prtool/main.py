@@ -1,3 +1,5 @@
+from dotenv import load_dotenv
+load_dotenv()
 import os
 # Suppress LiteLLM's noisy proxy/logging errors
 os.environ.setdefault("LITELLM_LOG", "ERROR")
@@ -5,7 +7,7 @@ os.environ.setdefault("LITELLM_LOG", "ERROR")
 os.environ.setdefault("LITELLM_TURN_OFF_MESSAGE_LOGGING", "true")
 
 import sys
-import os
+
 import json
 from datetime import datetime
 from prtool.crew import PrToolCrew
