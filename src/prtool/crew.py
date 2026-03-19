@@ -8,10 +8,24 @@ import os
 
 @CrewBase
 class PrToolCrew():
-    llm = LLM(
-        model="gemini/gemini-2.5-flash",
-        api_key=os.environ.get("GEMINI_API_KEY"),
-        temperature=0.2
+    # Use separate providers to stay within each provider's free-tier RPM limits.
+    # Your `.env` already contains the API keys; model ids are configurable too.
+    _groq_model = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
+    _cerebras_model = os.environ.get("CEREBRAS_MODEL", "llama3.1-8b")
+
+    llm_groq = LLM(
+        model=_groq_model,
+        api_key=os.environ.get("GROQ_API_KEY"),
+        # Groq provides an OpenAI-compatible endpoint.
+        base_url="https://api.groq.com/openai/v1",
+        temperature=0.2,
+    )
+    llm_cerebras = LLM(
+        model=_cerebras_model,
+        api_key=os.environ.get("CEREBRAS_API_KEY"),
+        # Cerebras provides an OpenAI-compatible endpoint.
+        base_url="https://api.cerebras.ai/v1",
+        temperature=0.2,
     )
     agents_config = 'config/agents.yaml'
     tasks_config = 'config/tasks.yaml'
@@ -20,7 +34,7 @@ class PrToolCrew():
         return Agent(
             config = self.agents_config['scout'],
             tools = [Read_PR_Diff()],
-            llm=self.llm,
+            llm=self.llm_cerebras,
             verbose = True
         )
     @agent
@@ -28,7 +42,7 @@ class PrToolCrew():
         return Agent(
             config = self.agents_config['intent_extractor'],
             tools = [ReadLocalPRBody(), ReadLocalIssue()],
-            llm=self.llm,
+            llm=self.llm_cerebras,
             verbose = True
         )
     @agent
@@ -36,21 +50,21 @@ class PrToolCrew():
         return Agent(
             config = self.agents_config['diff_reviewer'],
             tools = [Read_PR_Diff()],
-            llm=self.llm,
+            llm=self.llm_groq,
             verbose = True
         )
     @agent
     def verifier(self)->Agent:
         return Agent(
             config = self.agents_config['verifier'],
-            llm=self.llm,
+            llm=self.llm_groq,
             verbose = True
         )
     @agent
     def decider(self)->Agent:
         return Agent(
             config = self.agents_config['decider'],
-            llm=self.llm,
+            llm=self.llm_groq,
             verbose = True
         )
     @task 
@@ -92,6 +106,6 @@ class PrToolCrew():
             agents = self.agents,
             tasks = self.tasks,
             process = Process.sequential,
-            llm=self.llm,
+            llm=self.llm_groq,  # default; individual agents override this anyway
             verbose = True
         )
