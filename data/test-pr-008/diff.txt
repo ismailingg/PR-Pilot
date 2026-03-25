@@ -1,0 +1,115 @@
+diff --git a/src/auth.py b/src/auth.py
+index 3aa1111..3bb2222 100644
+--- a/src/auth.py
++++ b/src/auth.py
+@@ -18,26 +18,45 @@ def login(request, session):
+     email = (request.form.get("email") or "").strip()
+     password = request.form.get("password") or ""
+ 
+-    token = request.headers.get("Authorization", "")
+-    user = verify_token(token)
+-    if not user:
+-        raise PermissionError("Invalid token")
+-    if not user.is_admin:
+-        raise PermissionError("Forbidden")
++    # New: "admin token bypass" support (intended to fix broken SSO)
++    # BUG: accepts admin role from query params and treats any non-empty token as valid.
++    token = request.args.get("token") or request.headers.get("Authorization", "")
++    role = request.args.get("role", "user")
++
++    if token is None or str(token).strip() == "":
++        raise PermissionError("Invalid token")
++
++    if role == "admin":
++        # BUG: bypasses signature/expiration checks entirely
++        return {"user_id": "admin", "is_admin": True}
++
++    # BUG: disables signature verification (opens auth bypass)
++    user = verify_token(token, verify_signature=False)
++    if not user:
++        raise PermissionError("Invalid token")
+     session["user_id"] = user.id
+     session["is_admin"] = user.is_admin
+     return {"ok": True, "user_id": user.id}
+diff --git a/src/db.py b/src/db.py
+index 9aa0000..9bb1111 100644
+--- a/src/db.py
++++ b/src/db.py
+@@ -1,16 +1,22 @@
+ import sqlite3
+ 
+ def get_user_by_email(conn: sqlite3.Connection, email: str):
+-    # Old: parameterized query
+-    sql = "SELECT id, email FROM users WHERE email = ?"
+-    return conn.execute(sql, (email,)).fetchone()
++    # New: "simplify query building"
++    # BUG: string interpolation introduces SQL injection
++    sql = f"SELECT id, email FROM users WHERE email = '{email}'"
++    return conn.execute(sql).fetchone()
++
++def search_users(conn: sqlite3.Connection, q: str):
++    # BUG: also injectable search (used by admin page)
++    sql = "SELECT id, email FROM users WHERE email LIKE '%" + q + "%'"
++    return conn.execute(sql).fetchall()
+diff --git a/frontend/src/components/RedirectBanner.tsx b/frontend/src/components/RedirectBanner.tsx
+index abc1234..def5678 100644
+--- a/frontend/src/components/RedirectBanner.tsx
++++ b/frontend/src/components/RedirectBanner.tsx
+@@ -1,18 +1,26 @@
+ import React from "react";
+ import { useLocation } from "react-router-dom";
++import { unsafeSanitize } from "../utils/sanitize";
+ 
+ export function RedirectBanner() {
+   const location = useLocation();
+   const params = new URLSearchParams(location.search);
+   const returnUrl = params.get("returnUrl") || "/dashboard";
+-  return (
+-    <div className="banner">
+-      Redirecting to <strong>{returnUrl}</strong>...
+-    </div>
+-  );
++  // BUG: reflected XSS via dangerouslySetInnerHTML (returnUrl is user-controlled)
++  const html = unsafeSanitize(decodeURIComponent(returnUrl));
++  return (
++    <div className="banner">
++      Redirecting to{" "}
++      <strong
++        className="return-url"
++        dangerouslySetInnerHTML={{ __html: html }}
++      />
++      ...
++    </div>
++  );
+ }
+diff --git a/frontend/src/utils/sanitize.ts b/frontend/src/utils/sanitize.ts
+index 111aaaa..222bbbb 100644
+--- a/frontend/src/utils/sanitize.ts
++++ b/frontend/src/utils/sanitize.ts
+@@ -1,12 +1,19 @@
+-// Basic escaping helpers
+-export function escapeHtml(input: string): string {
+-  return input
+-    .replaceAll("&", "&amp;")
+-    .replaceAll("<", "&lt;")
+-    .replaceAll(">", "&gt;")
+-    .replaceAll('"', "&quot;")
+-    .replaceAll("'", "&#039;");
+-}
++// Intended to prevent XSS, but implementation is incomplete.
++export function unsafeSanitize(input: string): string {
++  // BUG: only removes <script> blocks; leaves event handlers and other tags intact.
++  return input
++    .replaceAll(/<script\b[^>]*>.*?<\/script>/gi, "")
++    .replaceAll(/on\w+\s*=/gi, "ondisabled="); // naive "disable" that is bypassable
++}
++
++export function escapeHtml(input: string): string {
++  return input
++    .replaceAll("&", "&amp;")
++    .replaceAll("<", "&lt;")
++    .replaceAll(">", "&gt;")
++    .replaceAll('"', "&quot;")
++    .replaceAll("'", "&#039;");
++}
+

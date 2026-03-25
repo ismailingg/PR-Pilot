@@ -42,7 +42,7 @@ class PrToolCrew():
         return Agent(
             config = self.agents_config['intent_extractor'],
             tools = [ReadLocalPRBody(), ReadLocalIssue()],
-            llm=self.llm_cerebras,
+            llm=self.llm_groq,
             verbose = True
         )
     @agent

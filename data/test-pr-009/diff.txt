@@ -1,0 +1,83 @@
+diff --git a/backend/src/routes/preferences.py b/backend/src/routes/preferences.py
+index 4ab0101..4cd0202 100644
+--- a/backend/src/routes/preferences.py
++++ b/backend/src/routes/preferences.py
+@@ -22,19 +22,26 @@ def get_preferences(request):
+     return {"theme": prefs.theme}
+ 
+ @router.post("/api/preferences/theme")
+ def set_theme(request):
+     user = require_user(request)
+-    # CSRF enforced by middleware for this router
+-    theme = request.json.get("theme")
++    # Intended: CSRF enforced by middleware, but this specific route is not covered
++    # BUG: missing CSRF validation for a state-changing request
++    theme = request.json.get("theme")
+     if theme not in ("light", "dark"):
+         raise ValueError("Invalid theme")
+     prefs = Preferences.load(user.id)
+     prefs.theme = theme
+     prefs.save()
+     return {"ok": True}
+diff --git a/frontend/src/components/ThemeToggle.jsx b/frontend/src/components/ThemeToggle.jsx
+index 1c0ffee..2c0ffee 100644
+--- a/frontend/src/components/ThemeToggle.jsx
++++ b/frontend/src/components/ThemeToggle.jsx
+@@ -1,22 +1,31 @@
+ import React, { useMemo, useState } from "react";
++import { getCsrfToken } from "../utils/csrf";
+ 
+ export function ThemeToggle({ initialTheme }) {
+   const [theme, setTheme] = useState(initialTheme || "light");
++  const csrfToken = useMemo(() => {
++    // BUG: token may be undefined in this widget context; request will silently omit it
++    return getCsrfToken() || "";
++  }, []);
+ 
+   async function onToggle() {
+     const next = theme === "dark" ? "light" : "dark";
+     setTheme(next);
+     await fetch("/api/preferences/theme", {
+       method: "POST",
+       headers: {
+         "Content-Type": "application/json",
+-        // CSRF token added elsewhere
++        // BUG: wrong header name for the server-side check (and blank token is allowed)
++        "X-CSRF-Token": csrfToken,
+       },
+       body: JSON.stringify({ theme: next }),
+       credentials: "include",
+     });
+   }
+ 
+   return (
+     <button type="button" onClick={onToggle}>
+       Toggle theme
+     </button>
+   );
+ }
+diff --git a/frontend/src/components/SearchBanner.jsx b/frontend/src/components/SearchBanner.jsx
+index b00babe..c00babe 100644
+--- a/frontend/src/components/SearchBanner.jsx
++++ b/frontend/src/components/SearchBanner.jsx
+@@ -1,17 +1,24 @@
+ import React from "react";
+ 
+ export function SearchBanner({ q }) {
+-  return (
+-    <div className="search-banner">
+-      Showing results for: <strong>{q}</strong>
+-    </div>
+-  );
++  // Minor reflected security issue:
++  // If `q` is provided as a javascript: URL, this renders a clickable link.
++  // It requires a user click, but we still should prevent dangerous schemes.
++  return (
++    <div className="search-banner">
++      Showing results for:{" "}
++      <a className="search-q-link" href={q}>
++        {q}
++      </a>
++    </div>
++  );
+ }
