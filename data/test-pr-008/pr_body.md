@@ -5,3 +5,4 @@ This PR ships security hardening for the login and admin experience:
 - User lookup + search queries updated to avoid unsafe query construction
 - Frontend redirect banner improved to safely render `returnUrl` and prevent XSS
 
+#this is a pr 
