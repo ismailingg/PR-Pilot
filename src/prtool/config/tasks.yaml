@@ -23,6 +23,39 @@ review_task:
     severity, and suggestions.
   agent: diff_reviewer
 
+simulation_task:
+  description: >
+    You are the Reliability & Impact Engineer.
+    Analyze the potential broader impact of merging this PR.
+    
+    Inputs you have:
+    - Intent Summary (from Intent Extractor)
+    - Code diff and findings (from Diff Reviewer)
+    - Technology stack and scope (from Scout)
+    
+    Think step-by-step:
+    1. What modules, APIs, shared logic, or data flows might this PR affect?
+    2. Could this introduce regressions in performance, stability, or error handling?
+    3. Are there any obvious breaking changes for other parts of the system?
+    4. What happens under edge cases or high load?
+    
+    Be precise and evidence-based. Do not exaggerate small issues.
+    Focus on real production risks.
+
+  expected_output: >
+    A structured assessment containing:
+    - stability_verdict: one of "safe", "low_risk", "medium_risk", "high_risk", "critical"
+    - confidence: float between 0.0 and 1.0
+    - potential_side_effects: list of strings (clear, actionable)
+    - regression_risks: list of strings (if any)
+    - recommendation_note: a short, professional note for the human reviewer
+
+  agent: simulation_engineer
+  context:
+    - intent_task
+    - diff_review_task
+    - scout_task
+
 verification_task:
   description: >
     Compare the IntentSummary with the findings from the diff_reviewer. 
