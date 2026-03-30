@@ -35,6 +35,8 @@ class PrToolCrew():
             config = self.agents_config['scout'],
             tools = [Read_PR_Diff()],
             llm=self.llm_cerebras,
+            max_iter = 2,
+            max_retry_limit = 0,
             verbose = True
         )
     @agent
@@ -50,6 +52,13 @@ class PrToolCrew():
         return Agent(
             config = self.agents_config['diff_reviewer'],
             tools = [Read_PR_Diff()],
+            llm=self.llm_groq,
+            verbose = True
+        )
+    @agent
+    def simulation_engineer(self)->Agent:
+        return Agent(
+            config = self.agents_config['simulation_engineer'],
             llm=self.llm_groq,
             verbose = True
         )
@@ -71,32 +80,51 @@ class PrToolCrew():
     def scouting_task(self)->Task:
         return Task(
             config = self.tasks_config['scouting_task'],
+            agent = self.scout(),
             output_pydantic = ProjectContext
         )
     @task
     def extraction_task(self)->Task:
         return Task(
             config = self.tasks_config['extraction_task'],
+            agent = self.intent_extractor(),
             verbose = True
         )
     @task
     def review_task(self)->Task:
         return Task(
             config = self.tasks_config['review_task'],
-            context=[self.scouting_task()],
+            agent = self.diff_reviewer(),
+            context=[self.scouting_task(), self.extraction_task()],
+            verbose = True
+        )
+    @task
+    def simulation_task(self)->Task:
+        return Task(
+            config = self.tasks_config['simulation_task'],
+            agent = self.simulation_engineer(),
+            context=[self.scouting_task(), self.extraction_task(), self.review_task()],
             verbose = True
         )
     @task
     def verification_task(self)->Task:
         return Task(
             config = self.tasks_config['verification_task'],
-            context=[self.scouting_task(), self.extraction_task(), self.review_task()],
+            agent = self.verifier(),
+            context=[
+                self.scouting_task(),
+                self.extraction_task(),
+                self.review_task(),
+                self.simulation_task(),
+            ],
             output_pydantic = CodeReviewReport
         )
     @task
     def decision_task(self)->Task:
         return Task(
             config = self.tasks_config['decision_task'],
+            agent = self.decider(),
+            context=[self.verification_task()],
             output_pydantic = ReviewVerdict
         )
 
@@ -104,7 +132,14 @@ class PrToolCrew():
     def crew(self)->Crew:
         return Crew(
             agents = self.agents,
-            tasks = self.tasks,
+            tasks = [
+                self.scouting_task(),
+                self.extraction_task(),
+                self.review_task(),
+                self.simulation_task(),
+                self.verification_task(),
+                self.decision_task(),
+            ],
             process = Process.sequential,
             llm=self.llm_groq,  # default; individual agents override this anyway
             verbose = True

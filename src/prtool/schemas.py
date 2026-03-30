@@ -7,6 +7,12 @@ class VerdictStatus(str, Enum):
     BLOCK = "block"
     ADVISE = "merge_with_advice"
 
+    # Recommendation-style verdicts (decider agent v2)
+    STRONGLY_RECOMMEND_MERGE = "strongly_recommend_merge"
+    APPROVE_WITH_MINOR_CHANGES = "approve_with_minor_changes"
+    NEEDS_HUMAN_REVIEW = "needs_human_review"
+    DO_NOT_MERGE = "do_not_merge"
+
 
 class FindingSeverity(str, Enum):
     """Allowed severity values for code findings. Agent must use only these."""
@@ -50,7 +56,10 @@ class CodeReviewReport(BaseModel): #Report on the code review
     security_score: float = Field(..., ge=0.0, le=10.0, description="Security health (0-10)")
 
 class ReviewVerdict(BaseModel):
-    verdict: VerdictStatus = Field(..., description="The final decision: merge, block, or merge_with_advice")
+    verdict: VerdictStatus = Field(
+        ...,
+        description="Final recommendation verdict (legacy or recommendation-style).",
+    )
     confidence: float = Field(..., ge=0, le=1)
     summary: str = Field(..., description="A summary of why this verdict was chosen")
     comment_draft: str = Field(

@@ -12,6 +12,7 @@ import json
 from datetime import datetime
 from prtool.crew import PrToolCrew
 from pathlib import Path
+import traceback
 
 def run():
     if len(sys.argv) != 2:
@@ -58,6 +59,8 @@ def run():
 
     except Exception as e:
         print(f"\n💥 CRITICAL ERROR during review: {e}")
+        print("\n[TRACEBACK]")
+        print(traceback.format_exc())
         sys.exit(1)
         
 if __name__ == "__main__":

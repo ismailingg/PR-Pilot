@@ -52,9 +52,9 @@ simulation_task:
 
   agent: simulation_engineer
   context:
-    - intent_task
-    - diff_review_task
-    - scout_task
+    - extraction_task
+    - review_task
+    - scouting_task
 
 verification_task:
   description: >
