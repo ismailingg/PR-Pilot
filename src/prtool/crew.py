@@ -9,7 +9,7 @@ import os
 @CrewBase
 class PrToolCrew():
     # Use separate providers to stay within each provider's free-tier RPM limits.
-    # Your `.env` already contains the API keys; model ids are configurable too.
+    
     _groq_model = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
     _cerebras_model = os.environ.get("CEREBRAS_MODEL", "llama3.1-8b")
 
