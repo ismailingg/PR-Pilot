@@ -1,53 +1,146 @@
-import hmac
-import hashlib
+from crewai import Agent, Crew, Process, Task
+from prtool.tools.custom_tool import Read_PR_Diff, ReadLocalPRBody, ReadLocalIssue, FormatReviewComment
+from crewai.project import CrewBase, agent, crew, task
+from prtool.schemas import CodeReviewReport, ReviewVerdict, IntentSummary, CodeFinding, ProjectContext
+from crewai import LLM
 import os
-from fastapi import FastAPI, Request, Header, HTTPException
-from dotenv import load_dotenv
+#from langchain_ollama import OllamaLLM
 
-# --- NEW IMPORTS ---
-from prtool.utils.github_manager import GitHubManager
-from prtool.crew import PrToolCrew  # This is your agent file!
-
-load_dotenv()
-app = FastAPI()
-
-@app.post("/webhook")
-async def github_webhook(request: Request, x_hub_signature_256: str = Header(None)):
-    payload = await request.body()
-    secret = os.getenv("GITHUB_WEBHOOK_SECRET")
+@CrewBase
+class PrToolCrew():
+    # Use separate providers to stay within each provider's free-tier RPM limits.
     
-    # 1. Security Check (Keep this!)
-    signature = "sha256=" + hmac.new(secret.encode(), payload, hashlib.sha256).hexdigest()
-    if not x_hub_signature_256 or not hmac.compare_digest(signature, x_hub_signature_256):
-        raise HTTPException(status_code=401, detail="Invalid signature")
+    _groq_model = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
+    _cerebras_model = os.environ.get("CEREBRAS_MODEL", "llama3.1-8b")
 
-    data = await request.json()
-    action = data.get("action")
-    
-    if action in ["opened", "synchronize"]:
-        repo_name = data["repository"]["full_name"]
-        pr_num = data["pull_request"]["number"]
-        install_id = data["installation"]["id"]
-        
-        # 2. Fetch the live data
-        gh = GitHubManager(install_id)
-        details = gh.get_pr_details(repo_name, pr_num)
-        
-        print(f"🚀 [AUDIT STARTING] PR #{pr_num}: {details['title']}")
+    llm_groq = LLM(
+        model=_groq_model,
+        api_key=os.environ.get("GROQ_API_KEY"),
+        # Groq provides an OpenAI-compatible endpoint.
+        base_url="https://api.groq.com/openai/v1",
+        temperature=0.2,
+    )
+    llm_cerebras = LLM(
+        model=_cerebras_model,
+        api_key=os.environ.get("CEREBRAS_API_KEY"),
+        # Cerebras provides an OpenAI-compatible endpoint.
+        base_url="https://api.cerebras.ai/v1",
+        temperature=0.2,
+    )
+    agents_config = 'config/agents.yaml'
+    tasks_config = 'config/tasks.yaml'
+    @agent
+    def scout(self)->Agent:
+        return Agent(
+            config = self.agents_config['scout'],
+            tools = [Read_PR_Diff()],
+            llm=self.llm_cerebras,
+            max_iter = 2,
+            max_retry_limit = 0,
+            verbose = True
+        )
+    @agent
+    def intent_extractor(self)->Agent:
+        return Agent(
+            config = self.agents_config['intent_extractor'],
+            tools = [ReadLocalPRBody(), ReadLocalIssue()],
+            llm=self.llm_groq,
+            verbose = True
+        )
+    @agent
+    def diff_reviewer(self)->Agent:
+        return Agent(
+            config = self.agents_config['diff_reviewer'],
+            tools = [Read_PR_Diff()],
+            llm=self.llm_groq,
+            verbose = True
+        )
+    @agent
+    def simulation_engineer(self)->Agent:
+        return Agent(
+            config = self.agents_config['simulation_engineer'],
+            llm=self.llm_groq,
+            verbose = True
+        )
+    @agent
+    def verifier(self)->Agent:
+        return Agent(
+            config = self.agents_config['verifier'],
+            llm=self.llm_groq,
+            verbose = True
+        )
+    @agent
+    def decider(self)->Agent:
+        return Agent(
+            config = self.agents_config['decider'],
+            llm=self.llm_groq,
+            verbose = True
+        )
+    @task 
+    def scouting_task(self)->Task:
+        return Task(
+            config = self.tasks_config['scouting_task'],
+            agent = self.scout(),
+            output_pydantic = ProjectContext
+        )
+    @task
+    def extraction_task(self)->Task:
+        return Task(
+            config = self.tasks_config['extraction_task'],
+            agent = self.intent_extractor(),
+            verbose = True
+        )
+    @task
+    def review_task(self)->Task:
+        return Task(
+            config = self.tasks_config['review_task'],
+            agent = self.diff_reviewer(),
+            context=[self.scouting_task(), self.extraction_task()],
+            verbose = True
+        )
+    @task
+    def simulation_task(self)->Task:
+        return Task(
+            config = self.tasks_config['simulation_task'],
+            agent = self.simulation_engineer(),
+            context=[self.scouting_task(), self.extraction_task(), self.review_task()],
+            verbose = True
+        )
+    @task
+    def verification_task(self)->Task:
+        return Task(
+            config = self.tasks_config['verification_task'],
+            agent = self.verifier(),
+            context=[
+                self.scouting_task(),
+                self.extraction_task(),
+                self.review_task(),
+                self.simulation_task(),
+            ],
+            output_pydantic = CodeReviewReport
+        )
+    @task
+    def decision_task(self)->Task:
+        return Task(
+            config = self.tasks_config['decision_task'],
+            agent = self.decider(),
+            context=[self.verification_task()],
+            output_pydantic = ReviewVerdict
+        )
 
-        # 3. KICKOFF THE CREW
-        # We pass the real data into the inputs dictionary
-        inputs = {
-            "diff": details["diff"],
-            "pr_body": details["body"],
-            "issue_description": "Still fetched from local for now, or link a URL...", 
-            "repo_context": repo_name
-        }
-
-        # This runs your agents!
-        result = PrToolCrew().crew().kickoff(inputs=inputs)
-
-        print("\n✅ [AUDIT COMPLETE]")
-        print(result.raw) # This will print the AI's final verdict to your console
-
-    return {"status": "accepted"}
+    @crew
+    def crew(self)->Crew:
+        return Crew(
+            agents = self.agents,
+            tasks = [
+                self.scouting_task(),
+                self.extraction_task(),
+                self.review_task(),
+                self.simulation_task(),
+                self.verification_task(),
+                self.decision_task(),
+            ],
+            process = Process.sequential,
+            llm=self.llm_groq,  # default; individual agents override this anyway
+            verbose = True
+        )
