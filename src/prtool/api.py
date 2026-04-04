@@ -33,7 +33,7 @@ async def github_webhook(request: Request, x_hub_signature_256: str = Header(Non
         gh = GitHubManager(install_id)
         details = gh.get_pr_details(repo_name, pr_num)
         
-        print(f"🚀 [AUDIT STARTING] PR #{pr_num}: {details['title']}")
+        print(f" [AUDIT STARTING] PR #{pr_num}: {details['title']}")
 
         # 3. KICKOFF THE CREW
         # We pass the real data into the inputs dictionary
@@ -47,7 +47,7 @@ async def github_webhook(request: Request, x_hub_signature_256: str = Header(Non
         # This runs your agents!
         result = PrToolCrew().crew().kickoff(inputs=inputs)
 
-        print("\n✅ [AUDIT COMPLETE]")
+        print("\n [AUDIT COMPLETE]")
         print(result.raw) # This will print the AI's final verdict to your console
 
     return {"status": "accepted"}
