@@ -1,9 +1,10 @@
-
 extraction_task:
   description: >
-    Analyze the GitHub issue and PR description for the test case {test_case}.
-    Use your tools to read the files. Identify the primary goal and list 
-    specific acceptance criteria or risks.
+    Analyze the following GitHub issue and PR description for {repo_name}:
+    PR Body: {pr_body}
+    Issue Context: {issue_description}
+    
+    Identify the primary goal and list specific acceptance criteria or risks.
   expected_output: >
     A structured IntentSummary object containing the goal,
     acceptance_criteria, and risks_mentioned.
@@ -14,9 +15,12 @@ extraction_task:
 review_task:
   description: >
     As a Senior {tech_stack} Engineer, perform a surgical review of the 
-    code diff for {test_case}. Find bugs, unoptimized logic, and framework-specific 
-    violations. 
-    When the diff removes bad behavior (e.g. hardcoded password) and adds validation, do not report the new validation logic as ‘hardcoded’ or ‘weak’ if it is implementing the stated requirements.
+    following code diff:
+    {diff}
+    
+    Find bugs, unoptimized logic, and framework-specific violations. 
+    When the diff removes bad behavior (e.g. hardcoded password) and adds validation, 
+    do not report the new validation logic as ‘hardcoded’ or ‘weak’ if it is implementing the stated requirements.
     You MUST cite the filename and line numbers for every finding.
   expected_output: >
     A detailed list of code findings including filename, line numbers, 
@@ -41,7 +45,6 @@ simulation_task:
     
     Be precise and evidence-based. Do not exaggerate small issues.
     Focus on real production risks.
-
   expected_output: >
     A structured assessment containing:
     - stability_verdict: one of "safe", "low_risk", "medium_risk", "high_risk", "critical"
@@ -49,7 +52,6 @@ simulation_task:
     - potential_side_effects: list of strings (clear, actionable)
     - regression_risks: list of strings (if any)
     - recommendation_note: a short, professional note for the human reviewer
-
   agent: simulation_engineer
   context:
     - extraction_task
@@ -84,8 +86,10 @@ decision_task:
 
 scouting_task:
   description: >
-    Scan the file paths and imports in the diff for {test_case}. 
-    Identify the programming languages, frameworks, and build tools used. 
+    Scan the file paths and imports in the following diff:
+    {diff}
+    
+    Identify the programming languages, frameworks, and build tools used for the project {repo_name}. 
     Estimate how complex this review will be based on the number of files touched.
   expected_output: >
     A ProjectContext object containing the detected tech_stack, 
