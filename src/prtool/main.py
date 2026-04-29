@@ -28,7 +28,7 @@ def run():
         sys.exit(1)
     
     inputs = {
-        "test_case": test_case_id,
+        "test_case": test_case_id,78
         "data_path": str(data_path),
         "repo_name": "MergeMate-Lab",
         "issue_number": "001",

@@ -1,5 +1,5 @@
 from crewai import Agent, Crew, Process, Task
-from prtool.tools.custom_tool import Read_PR_Diff, ReadLocalPRBody, ReadLocalIssue, FormatReviewComment
+from prtool.tools.custom_tool import FormatReviewComment
 from crewai.project import CrewBase, agent, crew, task
 from prtool.schemas import CodeReviewReport, ReviewVerdict, IntentSummary, CodeFinding, ProjectContext
 from crewai import LLM
@@ -11,7 +11,7 @@ class PrToolCrew():
     # Use separate providers to stay within each provider's free-tier RPM limits.
     
     _groq_model = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
-    _cerebras_model = os.environ.get("CEREBRAS_MODEL", "llama3.1-8b")
+    _openrouter_model = os.environ.get("OPENROUTER_MODEL", "openai/gpt-4o-mini")
 
     llm_groq = LLM(
         model=_groq_model,
@@ -20,11 +20,11 @@ class PrToolCrew():
         base_url="https://api.groq.com/openai/v1",
         temperature=0.2,
     )
-    llm_cerebras = LLM(
-        model=_cerebras_model,
-        api_key=os.environ.get("CEREBRAS_API_KEY"),
-        # Cerebras provides an OpenAI-compatible endpoint.
-        base_url="https://api.cerebras.ai/v1",
+    llm_openrouter = LLM(
+        model=_openrouter_model,
+        api_key=os.environ.get("OPENROUTER_API_KEY"),
+        # OpenRouter provides an OpenAI-compatible endpoint.
+        base_url="https://openrouter.ai/api/v1",
         temperature=0.2,
     )
     agents_config = 'config/agents.yaml'
@@ -33,8 +33,7 @@ class PrToolCrew():
     def scout(self)->Agent:
         return Agent(
             config = self.agents_config['scout'],
-            tools = [Read_PR_Diff()],
-            llm=self.llm_cerebras,
+            llm=self.llm_openrouter,
             max_iter = 2,
             max_retry_limit = 0,
             verbose = True
@@ -43,15 +42,13 @@ class PrToolCrew():
     def intent_extractor(self)->Agent:
         return Agent(
             config = self.agents_config['intent_extractor'],
-            tools = [ReadLocalPRBody(), ReadLocalIssue()],
-            llm=self.llm_groq,
+            llm=self.llm_openrouter,
             verbose = True
         )
     @agent
     def diff_reviewer(self)->Agent:
         return Agent(
             config = self.agents_config['diff_reviewer'],
-            tools = [Read_PR_Diff()],
             llm=self.llm_groq,
             verbose = True
         )
