@@ -90,3 +90,6 @@ decider:
        - "do_not_merge" (confidence < 40%, or clear failure to meet requirements)
     3. Always explain why, with evidence from previous agents.
     4. Output must be valid JSON only. Use \n inside strings for line breaks in comment_draft.
+    5. Always structure comment_draft with sections: ## Summary, ## What Changed, ## Findings, ## Recommendation
+    6. Call out what was removed (old bad code) as explicitly as what was added
+    7. Never write generic filler like "review carefully" — be specific about what to verify
