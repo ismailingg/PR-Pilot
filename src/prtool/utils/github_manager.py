@@ -33,3 +33,18 @@ class GitHubManager:
             "diff": diff_response.text,
             "issue_url": pr.issue_url
         }
+    def post_pr_comment(self, repo_name: str, pr_number: int, comment_body: str):
+        """
+        Posts a top-level comment to the specified Pull Request.
+        """
+        try:
+            repo = self.client.get_repo(repo_name)
+            pr = repo.get_pull(pr_number)
+            
+            # In GitHub, PR comments are technically 'issue' comments
+            pr.create_issue_comment(comment_body)
+            print(f" Successfully posted comment to PR #{pr_number}")
+            return True
+        except Exception as e:
+            print(f" Failed to post comment: {str(e)}")
+            return False

@@ -51,8 +51,26 @@ async def github_webhook(request: Request, x_hub_signature_256: str = Header(Non
         result = crew_instance.kickoff(inputs=inputs)
 
         print("\n✅ [AUDIT COMPLETE]")
-        print("-" * 30)
-        print(result.raw)
+        # 4. POST COMMENT TO GITHUB
+        try:
+            # result.pydantic contains the ReviewVerdict object 
+            # defined in your schemas.py
+            verdict = result.pydantic
+            
+            if verdict and verdict.comment_draft:
+                print(f" Posting verdict to GitHub...")
+                
+                # We add a small header so everyone knows it's an AI audit
+                final_comment = f"### 🤖 MergeMate AI Audit\n\n{verdict.comment_draft}"
+                
+                gh.post_pr_comment(repo_name, pr_num, final_comment)
+            else:
+                print("⚠️ No comment draft found in the AI's output.")
+                
+        except Exception as e:
+            print(f"❌ Error extracting verdict: {str(e)}")
+            # Fallback: if pydantic fails, try printing the raw result
+            print(f"Raw Output: {result.raw}")
 
     return {"status": "accepted"}
 
