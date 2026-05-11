@@ -35,10 +35,10 @@ class CodeFinding(BaseModel):  # individual code issues
     @field_validator("severity", mode="before")
     @classmethod
     def coerce_severity(cls, v: object) -> str:
-        """Map 'Informational' / 'info' from the agent to 'low' (mildest level)."""
+        """Map 'Informational', 'N/A', or other non-standard values to 'low'."""
         if isinstance(v, str):
             normalized = v.strip().lower()
-            if normalized in ("informational", "info"):
+            if normalized in ("informational", "info", "n/a", "none", "unknown"):
                 return "low"
         return v
 

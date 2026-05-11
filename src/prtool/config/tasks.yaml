@@ -24,7 +24,7 @@ review_task:
     You MUST cite the filename and line numbers for every finding.
   expected_output: >
     A detailed list of code findings including filename, line numbers, 
-    severity, and suggestions.
+    severity (must be one of: low, medium, high, critical), and suggestions.
   agent: diff_reviewer
 
 simulation_task:
@@ -66,7 +66,7 @@ verification_task:
     actually matches the goal and assign quality and security scores.
   expected_output: >
     A complete CodeReviewReport object including the nested IntentSummary, 
-    a list of CodeFindings, and numerical scores.
+    a list of CodeFindings (each with severity: low, medium, high, or critical), and numerical scores.
   agent: verifier
 
 decision_task:
