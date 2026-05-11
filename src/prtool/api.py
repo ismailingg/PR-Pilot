@@ -84,8 +84,8 @@ async def github_webhook(request: Request, x_hub_signature_256: str = Header(Non
     try:
         verdict = result.pydantic
         if verdict and verdict.comment_draft:
-            print("📝 Posting verdict to GitHub...")
-            final_comment = f"### 🤖 MergeMate AI Audit\n\n{verdict.comment_draft}"
+            print(" Posting verdict to GitHub...")
+            final_comment = f"### PrPilot AI Audit\n\n{verdict.comment_draft}"
             gh.post_pr_comment(repo_name, pr_num, final_comment)
         else:
             print("⚠️  No comment_draft in verdict — posting raw output.")
