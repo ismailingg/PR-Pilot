@@ -20,12 +20,41 @@ review_task:
     
     Find bugs, unoptimized logic, and framework-specific violations. 
     When the diff removes bad behavior (e.g. hardcoded password) and adds validation, 
-    do not report the new validation logic as ‘hardcoded’ or ‘weak’ if it is implementing the stated requirements.
+    do not report the new validation logic as 'hardcoded' or 'weak' if it is implementing the stated requirements.
     You MUST cite the filename and line numbers for every finding.
   expected_output: >
     A detailed list of code findings including filename, line numbers, 
-    severity (must be one of: low, medium, high, critical), and suggestions.
+    severity, and suggestions.
   agent: diff_reviewer
+
+security_scan_task:
+  description: >
+    Run a Semgrep static analysis scan on the following PR diff and interpret the results.
+    
+    Diff to scan:
+    {diff}
+    
+    Steps:
+    1. Use the Semgrep Security Scanner tool with the diff above as input.
+    2. Read the JSON output carefully.
+    3. For each finding, decide if it is a true positive or false positive.
+    4. Map true positives to OWASP categories where applicable.
+    5. Override severity if Semgrep's rating is wrong (e.g. hardcoded secret = CRITICAL always).
+    6. Provide a concrete fix suggestion for each true positive.
+    7. If the tool returns zero findings, report that explicitly — do NOT invent issues.
+    8. If the scan errored or was skipped, report the reason honestly.
+
+    IMPORTANT: Do not fabricate findings. Only report what the tool actually returned.
+  expected_output: >
+    A structured security scan report containing:
+    - scan_status: "completed", "skipped", or "error"
+    - files_scanned: number of files analyzed
+    - true_positives: list of real findings, each with filename, line, severity, 
+      owasp_category, description, and suggested_fix
+    - false_positives: list of dismissed findings with reasoning
+    - critical_count: number of CRITICAL severity true positives
+    - summary: one paragraph describing the overall security posture of the diff
+  agent: security_scanner
 
 simulation_task:
   description: >
@@ -35,6 +64,7 @@ simulation_task:
     Inputs you have:
     - Intent Summary (from Intent Extractor)
     - Code diff and findings (from Diff Reviewer)
+    - Security scan results (from Security Scanner)
     - Technology stack and scope (from Scout)
     
     Think step-by-step:
@@ -42,6 +72,7 @@ simulation_task:
     2. Could this introduce regressions in performance, stability, or error handling?
     3. Are there any obvious breaking changes for other parts of the system?
     4. What happens under edge cases or high load?
+    5. Do the security scan findings introduce any stability risks beyond security?
     
     Be precise and evidence-based. Do not exaggerate small issues.
     Focus on real production risks.
@@ -56,32 +87,53 @@ simulation_task:
   context:
     - extraction_task
     - review_task
+    - security_scan_task
     - scouting_task
 
 verification_task:
   description: >
-    Compare the IntentSummary with the findings from the diff_reviewer. 
-    Your job is to decide whether the current diff implements the goal and acceptance criteria. Distinguish between: (a) code that enforces a rule (e.g. rejecting weak passwords) vs (b) code that is a vulnerability. Only treat (b) as blocking.
+    Compare the IntentSummary with the findings from the diff_reviewer and the
+    security_scanner. Your job is to decide whether the current diff implements 
+    the goal and acceptance criteria. 
+    
+    Distinguish between: 
+    (a) code that enforces a rule (e.g. rejecting weak passwords) vs 
+    (b) code that is a vulnerability. Only treat (b) as blocking.
+    
+    For security scan findings: only treat CRITICAL and HIGH true positives 
+    as blocking. LOW and MEDIUM findings are advisory.
+    
     Fill out the CodeReviewReport. You must decide if the implementation 
     actually matches the goal and assign quality and security scores.
+    Let the security scan results influence the security_score directly:
+    - Any CRITICAL true positive: security_score ≤ 4.0
+    - Any HIGH true positive: security_score ≤ 6.5
+    - Only LOW/MEDIUM or no findings: security_score can be 7.0+
   expected_output: >
     A complete CodeReviewReport object including the nested IntentSummary, 
-    a list of CodeFindings (each with severity: low, medium, high, or critical), and numerical scores.
+    a list of CodeFindings, and numerical scores.
   agent: verifier
 
 decision_task:
   description: >
-    Review the CodeReviewReport and apply a Safety first, but merge when the acceptance criteria are clearly met and there are no critical security defects policy. 
+    Review the CodeReviewReport and apply a Safety first, but merge when the 
+    acceptance criteria are clearly met and there are no critical security defects policy. 
+    
     Decide if this PR is ready to merge. 
     solves_issue: yes should be used when the diff implements the required behavior, 
     even if the review found style/maintainability suggestions.
-    Draft a professional, encouraging, 
-    yet firm GitHub comment that summarizes all findings.
+    
+    When writing the comment_draft, include a dedicated Security Scan Results section
+    that lists every Semgrep finding (or confirms none were found).
+    
+    Draft a professional, encouraging, yet firm GitHub comment that summarizes all findings.
     Output valid JSON only: in comment_draft use \n for line breaks, not actual newlines.
   expected_output: >
     A ReviewVerdict object with solves_issue (yes/no/partial), 
     confidence (0.0-1.0), and the full comment_draft in Markdown.
     comment_draft must be one JSON string with \n for newlines so the output stays valid JSON.
+    comment_draft must include these sections in order:
+    ## Summary | ## What Changed | ## Security Scan Results | ## Code Review Findings | ## Recommendation
   agent: decider
 
 scouting_task:
