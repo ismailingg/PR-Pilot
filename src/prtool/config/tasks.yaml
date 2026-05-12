@@ -17,13 +17,23 @@ review_task:
     As a Senior {tech_stack} Engineer, perform a surgical review of the 
     following code diff:
     {diff}
-    
-    Find bugs, unoptimized logic, and framework-specific violations. 
-    When the diff removes bad behavior (e.g. hardcoded password) and adds validation, 
+
+    HOW TO COUNT LINE NUMBERS IN THIS DIFF:
+    - The "@@ -0,0 +1,N @@" header means the new file starts at line 1.
+    - Count ONLY lines beginning with '+' (new code) or ' ' (unchanged context).
+    - Each such line increments the counter by 1, including blank '+' lines.
+    - Lines beginning with '-', 'diff', 'index', '---', '+++', or '@@' are NOT real lines — skip them.
+    - Example: if line 1 is blank (+), line 2 is 'import requests', line 3 is blank,
+      line 4 is 'def fetch_data():', line 5 is blank, line 6 is '    api_key = "..."'
+      then the hardcoded key is at line 6, NOT line 5.
+
+    Find bugs, unoptimized logic, and framework-specific violations.
+    When the diff removes bad behavior (e.g. hardcoded password) and adds validation,
     do not report the new validation logic as 'hardcoded' or 'weak' if it is implementing the stated requirements.
     You MUST cite the filename and line numbers for every finding.
+    If you are not confident about a line number, cite the function name instead.
   expected_output: >
-    A detailed list of code findings including filename, line numbers, 
+    A detailed list of code findings including filename, line numbers,
     severity, and suggestions.
   agent: diff_reviewer
 
