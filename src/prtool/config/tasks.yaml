@@ -66,6 +66,39 @@ security_scan_task:
     - summary: one paragraph describing the overall security posture of the diff
   agent: security_scanner
 
+
+test_execution_task:
+  description: >
+    Run the test suite for the PR branch in an isolated Docker sandbox.
+    Run the full test suite regardless of whether the PR modifies test files.
+    A PR that doesn't touch tests can still break them — that's exactly what
+    we need to catch.
+
+    You have the following inputs:
+    - repo_url: https://github.com/{repo_name}
+    - branch: {pr_branch}
+    - github_token: {github_token}
+
+    Steps:
+    1. Call the Sandbox Test Runner tool with this exact JSON input:
+       {{"repo_url": "https://github.com/{repo_name}", "branch": "{pr_branch}", "github_token": "{github_token}"}}
+    2. Read the returned JSON carefully.
+    3. Report the status (completed/skipped/error/timeout) honestly.
+    4. If completed: report passed/failed counts and quote any failing test names from logs.
+    5. If skipped: state the reason — do NOT treat this as a test failure.
+    6. If timeout or error: flag it with the details.
+    7. Never invent test results. Only report what the tool returned.
+  expected_output: >
+    A TestExecutionResult object containing:
+    - status: completed, skipped, error, or timeout
+    - language: detected runtime (python, nodejs, go, etc.)
+    - passed: true/false
+    - test_counts: total, passed, failed
+    - duration_seconds: how long it took
+    - logs_summary: key lines from the output, especially failures
+    - skip_reason: if skipped, why
+  agent: test_executor
+
 simulation_task:
   description: >
     You are the Reliability & Impact Engineer.
@@ -98,6 +131,7 @@ simulation_task:
     - extraction_task
     - review_task
     - security_scan_task
+    - test_execution_task
     - scouting_task
 
 verification_task:
@@ -134,7 +168,8 @@ decision_task:
     even if the review found style/maintainability suggestions.
     
     When writing the comment_draft, include a dedicated Security Scan Results section
-    that lists every Semgrep finding (or confirms none were found).
+    that lists every Semgrep finding (or confirms none were found), and a Test Results
+    section that reports pass/fail counts or explains why tests were skipped.
     
     Draft a professional, encouraging, yet firm GitHub comment that summarizes all findings.
     Output valid JSON only: in comment_draft use \n for line breaks, not actual newlines.
@@ -143,7 +178,7 @@ decision_task:
     confidence (0.0-1.0), and the full comment_draft in Markdown.
     comment_draft must be one JSON string with \n for newlines so the output stays valid JSON.
     comment_draft must include these sections in order:
-    ## Summary | ## What Changed | ## Security Scan Results | ## Code Review Findings | ## Recommendation
+    ## Summary | ## What Changed | ## Security Scan Results | ## Test Results | ## Code Review Findings | ## Recommendation
   agent: decider
 
 scouting_task:

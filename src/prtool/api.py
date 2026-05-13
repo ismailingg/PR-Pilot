@@ -38,6 +38,7 @@ async def github_webhook(request: Request, x_hub_signature_256: str = Header(Non
 
     repo_name = data["repository"]["full_name"]
     pr_num = data["pull_request"]["number"]
+    pr_branch = data["pull_request"]["head"]["ref"]   # branch name for test runner
     install_id = data["installation"]["id"]
 
     # 5. Fetch live PR details — raises RuntimeError if diff is missing/empty
@@ -48,7 +49,7 @@ async def github_webhook(request: Request, x_hub_signature_256: str = Header(Non
         print(f"❌ Could not fetch PR details: {e}")
         gh.post_pr_comment(
             repo_name, pr_num,
-            f"###  PrPilot AI Audit\n\n"
+            f"### PR-Pilot AI Audit\n\n"
             f"⚠️ Could not start review: `{e}`\n\n"
             f"Please ensure the PR contains code changes and try again."
         )
@@ -63,6 +64,8 @@ async def github_webhook(request: Request, x_hub_signature_256: str = Header(Non
         "repo_name": repo_name,
         "tech_stack": "Auto-detected",       # Scout agent will refine this
         "issue_description": details["issue_body"],  # real issue, not a placeholder
+        "pr_branch": pr_branch,              # for test executor sandbox clone
+        "github_token": gh.token,            # short-lived installation token (Option A)
     }
 
     # 7. Run the crew in a thread — never block the async event loop
@@ -73,7 +76,7 @@ async def github_webhook(request: Request, x_hub_signature_256: str = Header(Non
         print(f"❌ Crew failed: {e}")
         gh.post_pr_comment(
             repo_name, pr_num,
-            f"### 🤖 PrPilot AI Audit\n\n"
+            f"### PR-Pilot AI Audit\n\n"
             f"💥 Review failed with an internal error. Please re-open or push a new commit to retry."
         )
         return {"status": "error", "reason": str(e)}
@@ -84,14 +87,14 @@ async def github_webhook(request: Request, x_hub_signature_256: str = Header(Non
     try:
         verdict = result.pydantic
         if verdict and verdict.comment_draft:
-            print(" Posting verdict to GitHub...")
-            final_comment = f"### PrPilot AI Audit\n\n{verdict.comment_draft}"
+            print("📝 Posting verdict to GitHub...")
+            final_comment = f"### PR-Pilot AI Audit\n\n{verdict.comment_draft}"
             gh.post_pr_comment(repo_name, pr_num, final_comment)
         else:
             print("⚠️  No comment_draft in verdict — posting raw output.")
             gh.post_pr_comment(
                 repo_name, pr_num,
-                f"### 🤖 MergeMate AI Audit\n\n```\n{result.raw}\n```"
+                f"### PR-Pilot AI Audit\n\n```\n{result.raw}\n```"
             )
     except Exception as e:
         print(f"❌ Error posting comment: {e}")
@@ -102,4 +105,4 @@ async def github_webhook(request: Request, x_hub_signature_256: str = Header(Non
 
 @app.get("/")
 async def root():
-    return {"message": "PrPilot Auditor is Online"}
+    return {"message": "PR-Pilot Auditor is Online"}

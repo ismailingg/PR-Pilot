@@ -1,8 +1,9 @@
 from crewai import Agent, Crew, Process, Task
 from prtool.tools.custom_tool import FormatReviewComment
 from prtool.tools.semgrep_tool import SemgrepScanTool
+from prtool.tools.sandbox_runner import SandboxTestRunnerTool
 from crewai.project import CrewBase, agent, crew, task
-from prtool.schemas import CodeReviewReport, ReviewVerdict, IntentSummary, CodeFinding, ProjectContext
+from prtool.schemas import CodeReviewReport, ReviewVerdict, IntentSummary, CodeFinding, ProjectContext, TestExecutionResult
 from crewai import LLM
 import os
 
@@ -66,6 +67,18 @@ class PrToolCrew():
             llm=self.llm_groq,
             tools=[SemgrepScanTool()],
             max_iter=2,          # run the tool once, interpret once
+            max_retry_limit=1,
+            verbose=True,
+        )
+
+
+    @agent
+    def test_executor(self) -> Agent:
+        return Agent(
+            config=self.agents_config['test_executor'],
+            llm=self.llm_groq,
+            tools=[SandboxTestRunnerTool()],
+            max_iter=2,          # run tool once, summarise once
             max_retry_limit=1,
             verbose=True,
         )
@@ -134,6 +147,17 @@ class PrToolCrew():
             verbose=True,
         )
 
+
+    @task
+    def test_execution_task(self) -> Task:
+        return Task(
+            config=self.tasks_config['test_execution_task'],
+            agent=self.test_executor(),
+            context=[self.scouting_task()],
+            output_pydantic=TestExecutionResult,
+            verbose=True,
+        )
+
     @task
     def simulation_task(self) -> Task:
         return Task(
@@ -144,6 +168,7 @@ class PrToolCrew():
                 self.extraction_task(),
                 self.review_task(),
                 self.security_scan_task(),
+                self.test_execution_task(),
             ],
             verbose=True,
         )
@@ -158,6 +183,7 @@ class PrToolCrew():
                 self.extraction_task(),
                 self.review_task(),
                 self.security_scan_task(),
+                self.test_execution_task(),
                 self.simulation_task(),
             ],
             output_pydantic=CodeReviewReport,
@@ -170,7 +196,8 @@ class PrToolCrew():
             agent=self.decider(),
             context=[
                 self.verification_task(),
-                self.security_scan_task(),   # decider sees raw scan results directly
+                self.security_scan_task(),
+                self.test_execution_task(),  # decider sees test results directly
             ],
             output_pydantic=ReviewVerdict,
         )
@@ -187,7 +214,8 @@ class PrToolCrew():
                 self.scouting_task(),
                 self.extraction_task(),
                 self.review_task(),
-                self.security_scan_task(),   # runs after scout, before simulation
+                self.security_scan_task(),
+                self.test_execution_task(),  # runs in parallel with security scan
                 self.simulation_task(),
                 self.verification_task(),
                 self.decision_task(),

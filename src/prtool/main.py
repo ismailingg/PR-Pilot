@@ -30,7 +30,7 @@ def run():
     inputs = {
         "test_case": test_case_id,78
         "data_path": str(data_path),
-        "repo_name": "MergeMate-Lab",
+        "repo_name": "PR-Pilot-Lab",
         "issue_number": "001",
         "tech_stack": "Detected Technology"
     }
