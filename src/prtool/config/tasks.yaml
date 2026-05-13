@@ -80,8 +80,10 @@ test_execution_task:
     - github_token: {github_token}
 
     Steps:
-    1. Call the Sandbox Test Runner tool with this exact JSON input:
-       {{"repo_url": "https://github.com/{repo_name}", "branch": "{pr_branch}", "github_token": "{github_token}"}}
+    1. Call the Sandbox Test Runner tool with these exact arguments:
+       repo_url: "https://github.com/{repo_name}"
+       branch: "{pr_branch}"
+       github_token: "{github_token}"
     2. Read the returned JSON carefully.
     3. Report the status (completed/skipped/error/timeout) honestly.
     4. If completed: report passed/failed counts and quote any failing test names from logs.

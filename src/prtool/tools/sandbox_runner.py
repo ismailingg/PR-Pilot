@@ -307,24 +307,12 @@ class SandboxTestRunnerTool(BaseTool):
         "Clones a GitHub PR branch into an isolated Docker sandbox, "
         "detects the project type including multi-folder frameworks "
         "(MERN, Django+React, etc.), installs dependencies, runs the "
-        "test suite, and returns structured pass/fail results with logs. "
-        "Input must be a JSON string with keys: repo_url, branch, github_token."
+        "test suite, and returns structured pass/fail results with logs."
     )
 
-    def _run(self, input_json: str) -> str:
-
-        # --- 1. Parse input ---
-        try:
-            params         = json.loads(input_json)
-            repo_url_base  = params["repo_url"]   # e.g. https://github.com/owner/repo
-            branch         = params["branch"]
-            token          = params.get("github_token", "")
-        except (json.JSONDecodeError, KeyError) as e:
-            return json.dumps({
-                "status": "error",
-                "reason": f"Invalid input: {e}. Expected JSON with repo_url, branch, github_token.",
-                "passed": False,
-            })
+    def _run(self, repo_url: str, branch: str, github_token: str = "") -> str:
+        repo_url_base = repo_url
+        token         = github_token
 
         # --- 2. Inject token into clone URL (Option A — short-lived install token) ---
         if token and "github.com" in repo_url_base:
