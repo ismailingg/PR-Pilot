@@ -237,7 +237,28 @@ echo "==> Entering project directory"
 {cd_into}
 
 echo "==> Installing dependencies"
-{profile['install']}
+# Ubuntu 24.04 requires --break-system-packages for pip installs outside venv
+PIP="pip install --break-system-packages"
+
+if [ -f requirements.txt ]; then
+    echo "Found requirements.txt at root"
+    $PIP -r requirements.txt 2>&1
+elif [ -f pyproject.toml ]; then
+    echo "Found pyproject.toml, installing package"
+    $PIP -e ".[dev,test]" 2>&1 || $PIP -e . 2>&1
+elif [ -f setup.py ]; then
+    echo "Found setup.py, installing package"
+    $PIP -e . 2>&1
+else
+    echo "No dependency file found at root, checking subdirectories..."
+    REQ=$(find . -maxdepth 2 -name "requirements.txt" | head -1)
+    if [ -n "$REQ" ]; then
+        echo "Found $REQ"
+        $PIP -r "$REQ" 2>&1
+    else
+        echo "No requirements file found anywhere, proceeding without install"
+    fi
+fi
 
 echo "==> Running tests"
 {profile['test']}
