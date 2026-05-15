@@ -47,14 +47,14 @@ COMMON_SUBDIRS = [
 LANGUAGE_PROFILES = [
     {
         "name": "python",
-        "markers": ["requirements.txt", "pyproject.toml", "setup.py", "setup.cfg", "manage.py"],
+        "markers": ["requirements.txt", "pyproject.toml", "setup.py", "setup.cfg", "manage.py", "pytest.ini", "tox.ini", ".pytest.ini"],
         # Try requirements.txt first, fall back to pyproject, then bare pytest
         "install": (
             "pip install -q -r requirements.txt 2>/dev/null || "
             "pip install -q '.[dev,test]' 2>/dev/null || "
             "pip install -q . 2>/dev/null || true"
         ),
-        "test": "python -m pytest --tb=short -q 2>&1",
+        "test": "python3 -m pytest --tb=short -q 2>&1",
     },
     {
         "name": "nodejs",
@@ -131,6 +131,24 @@ def _find_projects(repo_dir: str) -> list[dict]:
                         "rel_work_dir": rel_dir,   # relative to repo root
                     })
                 break   # one match per directory is enough
+
+    # Fallback: if no markers found but a tests/ dir with .py files exists,
+    # treat as a bare Python project (no requirements.txt yet)
+    if not found:
+        python_profile = next(p for p in LANGUAGE_PROFILES if p["name"] == "python")
+        tests_dir = Path(repo_dir) / "tests"
+        has_py_tests = (
+            tests_dir.is_dir() and
+            any(tests_dir.glob("test_*.py"))
+        )
+        # Also check for any .py files in root that look like test files
+        root_py_tests = any(Path(repo_dir).glob("test_*.py"))
+        if has_py_tests or root_py_tests:
+            found.append({
+                "profile": python_profile,
+                "abs_work_dir": repo_dir,
+                "rel_work_dir": ".",
+            })
 
     return found
 

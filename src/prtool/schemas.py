@@ -35,11 +35,23 @@ class CodeFinding(BaseModel):
     @field_validator("severity", mode="before")
     @classmethod
     def coerce_severity(cls, v: object) -> str:
-        """Map 'Informational' / 'info' from the agent to 'low' (mildest level)."""
+        """
+        Normalise whatever the agent sends to a valid FindingSeverity value.
+        Handles: title-case ("Medium"), "None"/"none"/None, "informational".
+        Falls back to "low" for anything unrecognised so the crew never crashes.
+        """
+        if v is None:
+            return "low"
         if isinstance(v, str):
             normalized = v.strip().lower()
-            if normalized in ("informational", "info"):
+            # Map known aliases
+            if normalized in ("none", "", "n/a", "informational", "info"):
                 return "low"
+            # Title-case from agents: "Medium" → "medium" etc.
+            if normalized in ("low", "medium", "high", "critical"):
+                return normalized
+            # Unknown value — degrade gracefully instead of crashing
+            return "low"
         return v
 
 
