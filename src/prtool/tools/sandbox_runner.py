@@ -48,19 +48,42 @@ LANGUAGE_PROFILES = [
     {
         "name": "python",
         "markers": ["requirements.txt", "pyproject.toml", "setup.py", "setup.cfg", "manage.py", "pytest.ini", "tox.ini", ".pytest.ini"],
-        # Try requirements.txt first, fall back to pyproject, then bare pytest
+        # Install priority: requirements.txt → editable install → bare install → skip
         "install": (
             "pip install -q -r requirements.txt 2>/dev/null || "
-            "pip install -q '.[dev,test]' 2>/dev/null || "
-            "pip install -q . 2>/dev/null || true"
+            "pip install -q -e '.[dev,test]' 2>/dev/null || "
+            "pip install -q -e . 2>/dev/null || true"
         ),
-        "test": "python3 -m pytest --tb=short -q 2>&1",
+        # Test priority chain:
+        # 1. make test      — repo defines its own command (most flexible)
+        # 2. tox            — if tox.ini exists
+        # 3. pytest with --import-mode=importlib — works for any folder structure,
+        #    no __init__.py or package install needed
+        # 4. unittest discover — built-in fallback, no pytest needed
+        "test": (
+            "(make test 2>/dev/null) || "
+            "(tox 2>/dev/null) || "
+            "(python3 -m pytest --import-mode=importlib --tb=short -q 2>&1) || "
+            "(python3 -m unittest discover -s tests -q 2>&1)"
+        ),
     },
     {
         "name": "nodejs",
         "markers": ["package.json"],
-        "install": "npm ci --silent 2>&1 || npm install --silent 2>&1",
-        "test": "npm test -- --passWithNoTests 2>&1",
+        # Install priority: npm ci (clean) → npm install (relaxed) → yarn → pnpm
+        "install": (
+            "npm ci --silent 2>&1 || "
+            "npm install --silent 2>&1 || "
+            "yarn install --silent 2>&1 || "
+            "pnpm install --silent 2>&1 || true"
+        ),
+        # Test priority: npm → yarn → pnpm
+        # --passWithNoTests prevents exit code 1 when no tests exist yet
+        "test": (
+            "(npm test -- --passWithNoTests 2>&1) || "
+            "(yarn test --passWithNoTests 2>&1) || "
+            "(pnpm test 2>&1)"
+        ),
     },
     {
         "name": "go",
@@ -76,15 +99,27 @@ LANGUAGE_PROFILES = [
     },
     {
         "name": "java_maven",
-        "markers": ["pom.xml"],
-        "install": "mvn -q dependency:resolve 2>&1",
-        "test": "mvn -q test 2>&1",
+        "markers": ["pom.xml", "build.gradle", "build.gradle.kts"],
+        "install": (
+            "mvn -q dependency:resolve 2>/dev/null || "
+            "./gradlew dependencies --quiet 2>/dev/null || true"
+        ),
+        # Maven first, Gradle fallback
+        "test": (
+            "(mvn -q test 2>&1) || "
+            "(./gradlew test 2>&1)"
+        ),
     },
     {
         "name": "ruby",
-        "markers": ["Gemfile"],
-        "install": "bundle install --quiet 2>&1",
-        "test": "bundle exec rspec 2>&1",
+        "markers": ["Gemfile", "Rakefile"],
+        "install": "bundle install --quiet 2>&1 || true",
+        # rake → rspec → minitest
+        "test": (
+            "(bundle exec rake test 2>&1) || "
+            "(bundle exec rspec 2>&1) || "
+            "(bundle exec ruby -Itest test/**/*_test.rb 2>&1)"
+        ),
     },
 ]
 
@@ -192,11 +227,11 @@ def _run_project_in_sandbox(
     cd_into = f"cd repo/{rel_work_dir}" if rel_work_dir != "." else "cd repo"
 
     script = f"""
-set -e
 cd /home/sandbox
 
 echo "==> Cloning branch: {branch}"
 git clone --depth=1 --branch {branch} {repo_url} repo 2>&1
+if [ $? -ne 0 ]; then echo "CLONE_FAILED"; exit 1; fi
 
 echo "==> Entering project directory"
 {cd_into}
@@ -206,6 +241,7 @@ echo "==> Installing dependencies"
 
 echo "==> Running tests"
 {profile['test']}
+exit $?
 """
 
     cmd = [
