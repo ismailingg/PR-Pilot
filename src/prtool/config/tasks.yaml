@@ -105,47 +105,68 @@ simulation_task:
 verification_task:
   description: >
     Compare the IntentSummary with the findings from the diff_reviewer and the
-    security_scanner. Your job is to decide whether the current diff implements 
-    the goal and acceptance criteria. 
-    
-    Distinguish between: 
-    (a) code that enforces a rule (e.g. rejecting weak passwords) vs 
-    (b) code that is a vulnerability. Only treat (b) as blocking.
-    
-    For security scan findings: only treat CRITICAL and HIGH true positives 
-    as blocking. LOW and MEDIUM findings are advisory.
-    
-    Fill out the CodeReviewReport. You must decide if the implementation 
-    actually matches the goal and assign quality and security scores.
-    Let the security scan results influence the security_score directly:
-    - Any CRITICAL true positive: security_score ≤ 4.0
-    - Any HIGH true positive: security_score ≤ 6.5
-    - Only LOW/MEDIUM or no findings: security_score can be 7.0+
+    security_scanner. Your job is to verify the implementation, not to find
+    more things to complain about.
+
+    YOUR ONLY JOB:
+    1. Did the diff implement each acceptance criterion? Mark each one fulfilled or not.
+    2. Are the diff_reviewer's findings real bugs with line citations, or style opinions?
+       - Real bug with line citation → include in code_findings
+       - Style opinion / "consider doing X" / missing docstring → DISCARD, do not include
+    3. Does the security scan result match the code review? If the scan is clean,
+       do not add security concerns from your own reasoning unless you can cite
+       a specific line with a specific exploit.
+    4. Assign scores based on evidence only:
+       - quality_score: based on whether requirements are met and real bugs found
+       - security_score: driven by Semgrep results, not LLM speculation
+         * CRITICAL true positive: security_score ≤ 4.0
+         * HIGH true positive: security_score ≤ 6.5
+         * Clean scan: security_score 8.0+
+
+    REMEMBER: A function that works correctly and meets the requirement
+    is a PASS even if it could theoretically be refactored.
   expected_output: >
-    A complete CodeReviewReport object including the nested IntentSummary, 
-    a list of CodeFindings, and numerical scores.
+    A complete CodeReviewReport with:
+    - intent_summary: the goal and criteria
+    - code_findings: ONLY real bugs with line citations — empty list if none
+    - overall_assessment: one paragraph saying what was implemented and whether it works
+    - specific_suggestions: max 2 items, only if there are real actionable improvements
+    - quality_score and security_score based on evidence
   agent: verifier
 
 decision_task:
   description: >
-    Review the CodeReviewReport and apply a Safety first, but merge when the 
-    acceptance criteria are clearly met and there are no critical security defects policy. 
-    
-    Decide if this PR is ready to merge. 
-    solves_issue: yes should be used when the diff implements the required behavior, 
-    even if the review found style/maintainability suggestions.
-    
-    When writing the comment_draft, include a dedicated Security Scan Results section
-    that lists every Semgrep finding (or confirms none were found).
-    
-    Draft a professional, encouraging, yet firm GitHub comment that summarizes all findings.
-    Output valid JSON only: in comment_draft use \n for line breaks, not actual newlines.
+    Review the CodeReviewReport and write a GitHub comment that a developer
+    would actually find useful — specific, honest, and calibrated to the real
+    quality of the code.
+
+    BEFORE WRITING THE COMMENT, apply this checklist:
+    1. Did the diff implement what the issue asked for? If yes → solves_issue: yes
+    2. Are there any REAL bugs (logic errors, exceptions, security issues with line citations)?
+       If no → verdict is strongly_recommend_merge unless security scan found something.
+    3. Are the only "findings" style suggestions or elegance improvements?
+       If yes → these are NOT findings. Mention them briefly in Recommendation only.
+    4. Does the security scan contradict the code review or vice versa?
+       If yes → reconcile them. Do not say "scan is clean" and then
+       "ensure function X is secure" in the same comment.
+
+    THE COMMENT MUST FEEL LIKE IT CAME FROM A SENIOR ENGINEER WHO READ THE CODE,
+    not a checklist bot. The developer should be able to see exactly what was
+    verified and trust the verdict.
+
+    Output valid JSON only. Use \n for line breaks in comment_draft.
   expected_output: >
-    A ReviewVerdict object with solves_issue (yes/no/partial), 
-    confidence (0.0-1.0), and the full comment_draft in Markdown.
-    comment_draft must be one JSON string with \n for newlines so the output stays valid JSON.
-    comment_draft must include these sections in order:
-    ## Summary | ## What Changed | ## Security Scan Results | ## Code Review Findings | ## Recommendation
+    A ReviewVerdict object with verdict, confidence (0.0-1.0), summary, and comment_draft.
+    comment_draft must be valid JSON string with \n for newlines.
+    comment_draft sections in order:
+    ## Summary | ## What Was Verified | ## Security Scan Results | ## Findings | ## Recommendation
+    
+    In "What Was Verified": name each function/feature reviewed with one line saying what it does
+    and whether it works correctly. E.g. "✅ get_rate_limit_stats() — cleans stale timestamps,
+    returns per-client request count and rate limit status. Logic is correct."
+    
+    In "Findings": only real bugs with line citations. If none: "✅ No blocking issues found."
+    Style suggestions belong in Recommendation only, as a brief optional note.
   agent: decider
 
 scouting_task:
