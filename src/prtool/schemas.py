@@ -61,24 +61,6 @@ class IntentSummary(BaseModel):
     risks_mentioned: List[str] = Field(default_factory=list, description="The risks mentioned in the PR")
 
 
-class TestCounts(BaseModel):
-    total: int = Field(default=0, description="Total number of tests run")
-    passed: int = Field(default=0, description="Number of tests that passed")
-    failed: int = Field(default=0, description="Number of tests that failed")
-
-
-class TestExecutionResult(BaseModel):
-    status: str = Field(
-        ...,
-        description="One of: completed, skipped, error, timeout",
-    )
-    language: Optional[str] = Field(None, description="Detected language: python, nodejs, go, rust, java_maven, ruby")
-    passed: bool = Field(default=False, description="True if all tests passed (exit code 0)")
-    test_counts: Optional[TestCounts] = Field(None, description="Parsed pass/fail counts if available")
-    duration_seconds: Optional[float] = Field(None, description="How long the test run took")
-    logs_summary: str = Field(default="", description="Summarised test output — key failures and final result line")
-    skip_reason: Optional[str] = Field(None, description="Why tests were skipped, if applicable")
-
 
 class CodeReviewReport(BaseModel):
     intent_summary: IntentSummary = Field(..., description="The summary of the intent of the PR")
@@ -87,7 +69,6 @@ class CodeReviewReport(BaseModel):
     specific_suggestions: List[str] = Field(default_factory=list, description="Specific suggestions for the PR")
     quality_score: float = Field(..., ge=0.0, le=10.0, description="Overall code quality (0-10)")
     security_score: float = Field(..., ge=0.0, le=10.0, description="Security health (0-10)")
-    test_result: Optional[TestExecutionResult] = Field(None, description="Test execution results from the sandbox runner")
 
 
 class ReviewVerdict(BaseModel):
