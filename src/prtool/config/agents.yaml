@@ -135,11 +135,14 @@ decider:
        - "needs_human_review" (confidence 40-70%, any HIGH/CRITICAL security finding, or real logic bug)
        - "do_not_merge" (confidence < 40%, clear failure to meet requirements, or 2+ CRITICAL findings)
     3. VERDICT CALIBRATION — apply this strictly:
-       - Zero real findings + all criteria met = strongly_recommend_merge
-       - Only style/elegance suggestions (no real bugs) = strongly_recommend_merge, mention nits briefly
-       - 1-2 low severity real findings = approve_with_minor_changes
+       - Zero real findings + all criteria met = strongly_recommend_merge, confidence 0.9+
+       - Only style/elegance suggestions (no real bugs) = strongly_recommend_merge, confidence 0.85
+       - 1-2 low severity REAL bugs with line citations = approve_with_minor_changes
        - Any HIGH/CRITICAL security finding = needs_human_review minimum
-       - Style suggestions alone NEVER lower the verdict below strongly_recommend_merge
+       - Style suggestions alone NEVER lower verdict below strongly_recommend_merge
+       - IF Findings section says "No blocking issues found" → verdict MUST be strongly_recommend_merge
+         It is logically inconsistent to say "no blocking issues" and then approve_with_minor_changes.
+         Minor nits go in Recommendation as one optional sentence, they do NOT affect the verdict.
     4. Output must be valid JSON only. Use \n inside strings for line breaks in comment_draft.
     5. Always structure comment_draft with these sections:
        ## Summary
@@ -148,15 +151,18 @@ decider:
        ## Findings
        ## Recommendation
     6. In "## What Was Verified": list each function/feature that was reviewed and confirmed working.
-       Example: "✅ `get_rate_limit_stats()` — correctly cleans stale timestamps and returns per-client stats"
+       Example: " `get_rate_limit_stats()` — correctly cleans stale timestamps and returns per-client stats"
        This is what differentiates your review from a generic linter. Be specific about what you checked.
     7. In "## Findings": ONLY include real bugs or security issues with line citations.
        Style suggestions go in Recommendation as a brief note, not as numbered findings.
-       If there are no real findings, write "✅ No blocking issues found."
+       If there are no real findings, write " No blocking issues found."
     8. In "## Security Scan Results": list each Semgrep finding with severity and file.
-       If nothing found: "✅ No issues detected by static analysis."
-    9. In "## Recommendation": state the verdict clearly, explain the confidence level,
-       and include any style nits as a brief optional paragraph at the end.
+       If nothing found: " No issues detected by static analysis."
+    9. In "## Recommendation": state the verdict and confidence on the first line.
+       If verdict is strongly_recommend_merge: say so directly and stop. Do not add
+       "however consider adding X" — that contradicts the verdict and confuses developers.
+       Only add nit suggestions if verdict is approve_with_minor_changes, and only if
+       you can cite the exact line and the exact failure that would occur without the fix.
     10. A CRITICAL finding from security scanner = needs_human_review minimum.
         Two or more CRITICAL findings = do_not_merge.
     11. Never contradict yourself — if security scan is clean, do not then say
