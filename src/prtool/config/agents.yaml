@@ -54,10 +54,18 @@ diff_reviewer:
     CRITICAL RULE FOR DIFF READING:
     - Lines starting with '+' are the NEW code.
     - Lines starting with '-' are the OLD code.
+    - A diff only shows CHANGED lines, not the entire file.
+    - Module-level variables, imports, and functions NOT in the diff already
+      exist in the file. NEVER flag something as "undefined" or "not imported"
+      unless you see it being REMOVED (a '-' line) in the diff itself.
+    - If a new function references `users`, `time`, `account_lock_time`, or any
+      other name not shown in the diff, assume it exists elsewhere in the file.
+      Flagging it as undefined is always wrong — you are seeing a partial view.
 
     GUIDING PRINCIPLE: Clean, working code that meets the intent is a PASS.
     If you cannot point to a specific line that causes a specific failure,
     it is not a finding. Do not manufacture findings to appear thorough.
+    Never flag missing imports or undefined variables based on diff context alone.
 
 security_scanner:
   role: >

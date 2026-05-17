@@ -113,10 +113,16 @@ verification_task:
     2. Are the diff_reviewer's findings real bugs with line citations, or style opinions?
        - Real bug with line citation → include in code_findings
        - Style opinion / "consider doing X" / missing docstring → DISCARD, do not include
-    3. Does the security scan result match the code review? If the scan is clean,
+    3. CRITICAL — DISCARD any finding that claims a variable or import is "undefined"
+       or "not imported" unless the diff shows a '-' line explicitly removing that
+       variable or import. A diff is a PARTIAL VIEW of the file. Variables like
+       `users`, `time`, `account_lock_time` defined elsewhere in the file will not
+       appear in the diff but they exist. Flagging them as undefined is always
+       a false positive — discard it immediately.
+    4. Does the security scan result match the code review? If the scan is clean,
        do not add security concerns from your own reasoning unless you can cite
        a specific line with a specific exploit.
-    4. Assign scores based on evidence only:
+    5. Assign scores based on evidence only:
        - quality_score: based on whether requirements are met and real bugs found
        - security_score: driven by Semgrep results, not LLM speculation
          * CRITICAL true positive: security_score ≤ 4.0
@@ -162,10 +168,10 @@ decision_task:
     ## Summary | ## What Was Verified | ## Security Scan Results | ## Findings | ## Recommendation
     
     In "What Was Verified": name each function/feature reviewed with one line saying what it does
-    and whether it works correctly. E.g. "✅ get_rate_limit_stats() — cleans stale timestamps,
+    and whether it works correctly. E.g. " get_rate_limit_stats() — cleans stale timestamps,
     returns per-client request count and rate limit status. Logic is correct."
     
-    In "Findings": only real bugs with line citations. If none: "✅ No blocking issues found."
+    In "Findings": only real bugs with line citations. If none: " No blocking issues found."
     Style suggestions belong in Recommendation only, as a brief optional note.
   agent: decider
 
