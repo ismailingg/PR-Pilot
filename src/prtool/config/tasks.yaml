@@ -134,10 +134,16 @@ verification_task:
   expected_output: >
     A complete CodeReviewReport with:
     - intent_summary: the goal and criteria
-    - code_findings: ONLY real bugs with line citations — empty list if none
-    - overall_assessment: one paragraph saying what was implemented and whether it works
-    - specific_suggestions: max 2 items, only if there are real actionable improvements
-    - quality_score and security_score based on evidence
+    - code_findings: ONLY real bugs with line citations.
+      If there are no real bugs → output an EMPTY LIST [].
+      Do NOT populate code_findings with style suggestions, "consider adding X",
+      missing docstrings, or theoretical improvements. Empty list means clean code.
+    - overall_assessment: one sentence — "X function correctly implements Y requirement."
+      Do not add caveats, suggestions, or hedging to overall_assessment.
+    - specific_suggestions: EMPTY LIST [] unless there is a real bug that needs fixing.
+      "Consider adding validation" is NOT a specific suggestion — it is noise. Leave it out.
+    - quality_score: 9.0 if requirements met and no real bugs. Do not penalise clean code.
+    - security_score: driven by Semgrep only. 9.0 if scan is clean.
   agent: verifier
 
 decision_task:
@@ -168,10 +174,10 @@ decision_task:
     ## Summary | ## What Was Verified | ## Security Scan Results | ## Findings | ## Recommendation
     
     In "What Was Verified": name each function/feature reviewed with one line saying what it does
-    and whether it works correctly. E.g. " get_rate_limit_stats() — cleans stale timestamps,
+    and whether it works correctly. E.g. "✅ get_rate_limit_stats() — cleans stale timestamps,
     returns per-client request count and rate limit status. Logic is correct."
     
-    In "Findings": only real bugs with line citations. If none: " No blocking issues found."
+    In "Findings": only real bugs with line citations. If none: "✅ No blocking issues found."
     Style suggestions belong in Recommendation only, as a brief optional note.
   agent: decider
 

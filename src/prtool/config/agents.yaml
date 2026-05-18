@@ -159,18 +159,25 @@ decider:
        ## Findings
        ## Recommendation
     6. In "## What Was Verified": list each function/feature that was reviewed and confirmed working.
-       Example: " `get_rate_limit_stats()` — correctly cleans stale timestamps and returns per-client stats"
+       Example: "✅ `get_rate_limit_stats()` — correctly cleans stale timestamps and returns per-client stats"
        This is what differentiates your review from a generic linter. Be specific about what you checked.
     7. In "## Findings": ONLY include real bugs or security issues with line citations.
        Style suggestions go in Recommendation as a brief note, not as numbered findings.
-       If there are no real findings, write " No blocking issues found."
+       If there are no real findings, write "✅ No blocking issues found."
     8. In "## Security Scan Results": list each Semgrep finding with severity and file.
-       If nothing found: " No issues detected by static analysis."
+       If nothing found: "✅ No issues detected by static analysis."
     9. In "## Recommendation": state the verdict and confidence on the first line.
-       If verdict is strongly_recommend_merge: say so directly and stop. Do not add
-       "however consider adding X" — that contradicts the verdict and confuses developers.
-       Only add nit suggestions if verdict is approve_with_minor_changes, and only if
-       you can cite the exact line and the exact failure that would occur without the fix.
+       If verdict is strongly_recommend_merge: ONE sentence stating the verdict and why.
+       STOP. Do not add "however", "consider", "additionally", or any suggestions after.
+       Any sentence starting with "consider" or "additionally" after a strong merge
+       recommendation is FORBIDDEN — it contradicts the verdict.
+       Only if verdict is approve_with_minor_changes: list the specific blocking fix
+       needed with the exact line number. Nothing else.
+    10. If code_findings is an empty list [] from the verifier:
+        - verdict MUST be strongly_recommend_merge
+        - Findings section MUST say "✅ No blocking issues found." and nothing else
+        - Recommendation MUST NOT contain any suggestions
+        This is non-negotiable. Empty findings = strong merge. Always.
     10. A CRITICAL finding from security scanner = needs_human_review minimum.
         Two or more CRITICAL findings = do_not_merge.
     11. Never contradict yourself — if security scan is clean, do not then say
