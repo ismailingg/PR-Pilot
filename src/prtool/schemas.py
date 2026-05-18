@@ -82,9 +82,3 @@ class ReviewVerdict(BaseModel):
         ...,
         description="The GitHub comment as a single line; use escaped newline \\n for line breaks so JSON stays valid.",
     )
-
-
-class ProjectContext(BaseModel):
-    tech_stack: str = Field(..., description="The primary languages and frameworks detected (e.g. 'Node.js/React', 'Python/Django')")
-    complexity_level: str = Field(..., pattern="^(low|medium|high)$", description="Estimated complexity of the changes")
-    files_affected: int = Field(..., description="Approximate number of files changed")

@@ -14,8 +14,7 @@ extraction_task:
 
 review_task:
   description: >
-    As a Senior {tech_stack} Engineer, perform a surgical review of the 
-    following code diff:
+    You are a Senior {tech_stack} Engineer. Review the following code diff:
     {diff}
 
     HOW TO COUNT LINE NUMBERS IN THIS DIFF:
@@ -46,61 +45,29 @@ security_scan_task:
     
     Steps:
     1. Use the Semgrep Security Scanner tool with the diff above as input.
-    2. Read the JSON output carefully.
-    3. For each finding, decide if it is a true positive or false positive.
-    4. Map true positives to OWASP categories where applicable.
-    5. Override severity if Semgrep's rating is wrong (e.g. hardcoded secret = CRITICAL always).
-    6. Provide a concrete fix suggestion for each true positive.
-    7. If the tool returns zero findings, report that explicitly — do NOT invent issues.
+    2. Read the JSON output. It contains a "findings" array and a "finding_count" integer.
+    3. YOUR true_positives LIST MUST ONLY CONTAIN FINDINGS THAT APPEAR IN THE TOOL OUTPUT.
+       If finding_count is 1, you report exactly 1 finding maximum.
+       If finding_count is 0, true_positives must be an empty list [].
+    4. DO NOT add findings from your own knowledge or reasoning.
+    5. For each real finding: map it to an OWASP category, override severity only when clearly
+       wrong (e.g. a live hardcoded secret that Semgrep rated INFO should be CRITICAL),
+       and provide a concrete fix suggestion.
+    6. Line numbers MUST come from the tool's "line_start" field. Never guess.
+    7. If the tool returns finding_count of 0, set true_positives to [] and say so clearly.
     8. If the scan errored or was skipped, report the reason honestly.
 
-    IMPORTANT: Do not fabricate findings. Only report what the tool actually returned.
+    ABSOLUTE RULE: true_positives.length must equal finding_count from the tool output.
+    Any finding not in the tool JSON is fabricated and must NOT appear in your report.
   expected_output: >
     A structured security scan report containing:
     - scan_status: "completed", "skipped", or "error"
     - files_scanned: number of files analyzed
-    - true_positives: list of real findings, each with filename, line, severity, 
-      owasp_category, description, and suggested_fix
+    - true_positives: list of findings FROM THE TOOL ONLY
     - false_positives: list of dismissed findings with reasoning
     - critical_count: number of CRITICAL severity true positives
-    - summary: one paragraph describing the overall security posture of the diff
+    - summary: one clear sentence — if Semgrep found nothing, say so explicitly
   agent: security_scanner
-
-
-
-simulation_task:
-  description: >
-    You are the Reliability & Impact Engineer.
-    Analyze the potential broader impact of merging this PR.
-    
-    Inputs you have:
-    - Intent Summary (from Intent Extractor)
-    - Code diff and findings (from Diff Reviewer)
-    - Security scan results (from Security Scanner)
-    - Technology stack and scope (from Scout)
-    
-    Think step-by-step:
-    1. What modules, APIs, shared logic, or data flows might this PR affect?
-    2. Could this introduce regressions in performance, stability, or error handling?
-    3. Are there any obvious breaking changes for other parts of the system?
-    4. What happens under edge cases or high load?
-    5. Do the security scan findings introduce any stability risks beyond security?
-    
-    Be precise and evidence-based. Do not exaggerate small issues.
-    Focus on real production risks.
-  expected_output: >
-    A structured assessment containing:
-    - stability_verdict: one of "safe", "low_risk", "medium_risk", "high_risk", "critical"
-    - confidence: float between 0.0 and 1.0
-    - potential_side_effects: list of strings (clear, actionable)
-    - regression_risks: list of strings (if any)
-    - recommendation_note: a short, professional note for the human reviewer
-  agent: simulation_engineer
-  context:
-    - extraction_task
-    - review_task
-    - security_scan_task
-    - scouting_task
 
 verification_task:
   description: >
@@ -141,54 +108,48 @@ verification_task:
     - overall_assessment: one sentence — "X function correctly implements Y requirement."
       Do not add caveats, suggestions, or hedging to overall_assessment.
     - specific_suggestions: EMPTY LIST [] unless there is a real bug that needs fixing.
-      "Consider adding validation" is NOT a specific suggestion — it is noise. Leave it out.
-    - quality_score: 9.0 if requirements met and no real bugs. Do not penalise clean code.
-    - security_score: driven by Semgrep only. 9.0 if scan is clean.
+    - quality_score: 9.0 if requirements met and no real bugs.
+    - security_score: 9.0 if Semgrep scan is clean.
   agent: verifier
 
 decision_task:
   description: >
-    Review the CodeReviewReport and write a GitHub comment that a developer
-    would actually find useful — specific, honest, and calibrated to the real
-    quality of the code.
+    Review the CodeReviewReport and write a GitHub comment.
 
-    BEFORE WRITING THE COMMENT, apply this checklist:
-    1. Did the diff implement what the issue asked for? If yes → solves_issue: yes
-    2. Are there any REAL bugs (logic errors, exceptions, security issues with line citations)?
-       If no → verdict is strongly_recommend_merge unless security scan found something.
-    3. Are the only "findings" style suggestions or elegance improvements?
-       If yes → these are NOT findings. Mention them briefly in Recommendation only.
-    4. Does the security scan contradict the code review or vice versa?
-       If yes → reconcile them. Do not say "scan is clean" and then
-       "ensure function X is secure" in the same comment.
+    THE COMMENT FORMAT IS STRICT — follow it exactly:
 
-    THE COMMENT MUST FEEL LIKE IT CAME FROM A SENIOR ENGINEER WHO READ THE CODE,
-    not a checklist bot. The developer should be able to see exactly what was
-    verified and trust the verdict.
+    Line 1: "PR Review — confidence: X.XX/1.0"
+    Line 2: blank
+    Line 3: "Verdict: [one of: Merge | Merge with suggestions | Do not merge]"
+    Line 4: blank
+    Line 5: "Score breakdown:" (only include this section if confidence < 1.0)
+    Then list each deduction as:
+    "- (-0.XX) [specific reason with function name and line number if applicable]"
+    Line after breakdown: blank
+    Then: "What was reviewed:"
+    List each function/feature as:
+    "- [FunctionName()]: [one sentence saying what it does and that logic is correct]"
+    OR if there is a real bug:
+    "- [FunctionName()]: [one sentence saying what it does and what specifically is wrong]"
+    Line after reviewed: blank
+    Then: "Security scan: [clean / X findings — list each briefly]"
+    Line after security: blank
+    If verdict is "Merge with suggestions", add:
+    "Required before merge:"
+    List each required fix as:
+    "- [filename] line [N]: [exact failure that will occur without this fix]"
 
+    VERDICT RULES:
+    - confidence 0.8 to 1.0 AND code_findings is [] → Merge
+    - confidence 0.5 to 0.79 OR code_findings has low-severity items → Merge with suggestions
+    - confidence below 0.5 OR any HIGH/CRITICAL finding → Do not merge
+    - If code_findings is [] → confidence must be 0.85 minimum, verdict must be Merge
+
+    NO EMOJIS. NO MARKDOWN HEADERS WITH ##. NO "I recommend". NO "consider".
+    Write like a senior engineer leaving a code review note, not like an AI assistant.
     Output valid JSON only. Use \n for line breaks in comment_draft.
   expected_output: >
     A ReviewVerdict object with verdict, confidence (0.0-1.0), summary, and comment_draft.
-    comment_draft must be valid JSON string with \n for newlines.
-    comment_draft sections in order:
-    ## Summary | ## What Was Verified | ## Security Scan Results | ## Findings | ## Recommendation
-    
-    In "What Was Verified": name each function/feature reviewed with one line saying what it does
-    and whether it works correctly. E.g. "✅ get_rate_limit_stats() — cleans stale timestamps,
-    returns per-client request count and rate limit status. Logic is correct."
-    
-    In "Findings": only real bugs with line citations. If none: "✅ No blocking issues found."
-    Style suggestions belong in Recommendation only, as a brief optional note.
+    comment_draft must be a valid JSON string using \n for line breaks.
+    No emojis. No ## headers. Plain text formatted exactly as described above.
   agent: decider
-
-scouting_task:
-  description: >
-    Scan the file paths and imports in the following diff:
-    {diff}
-    
-    Identify the programming languages, frameworks, and build tools used for the project {repo_name}. 
-    Estimate how complex this review will be based on the number of files touched.
-  expected_output: >
-    A ProjectContext object containing the detected tech_stack, 
-    complexity_level, and file count.
-  agent: scout

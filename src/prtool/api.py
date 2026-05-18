@@ -13,6 +13,79 @@ load_dotenv()
 app = FastAPI()
 
 
+
+def _detect_tech_stack(diff: str) -> str:
+    """
+    Detect tech stack from diff — reads file paths, imports, and config files.
+    Covers frameworks (React, Django, Next.js, Spring, Rails) not just languages.
+    No LLM call needed — pure string matching is fast and accurate enough.
+    """
+    import re
+
+    # All changed file paths
+    files = re.findall(r'\+\+\+ b/(.+)', diff)
+    exts = {f.rsplit(".", 1)[-1].lower() for f in files if "." in f}
+    filenames = {f.rsplit("/", 1)[-1].lower() for f in files}
+
+    # All added lines (imports, config values)
+    added_lines = " ".join(re.findall(r'^\+(.+)', diff, re.MULTILINE))
+
+    # --- Framework detection (order matters — more specific first) ---
+
+    # Next.js (TypeScript/JavaScript + Next-specific imports)
+    if "next" in added_lines.lower() or any("next.config" in f for f in filenames):
+        return "Next.js/TypeScript" if exts & {"ts", "tsx"} else "Next.js/JavaScript"
+
+    # React (jsx/tsx files or React imports)
+    if exts & {"jsx", "tsx"} or "from 'react'" in added_lines or 'from "react"' in added_lines:
+        lang = "TypeScript" if exts & {"ts", "tsx"} else "JavaScript"
+        return f"React/{lang}"
+
+    # Vue
+    if "vue" in exts or "from 'vue'" in added_lines:
+        return "Vue.js"
+
+    # Django (manage.py, django imports, models.py patterns)
+    if any("django" in f for f in filenames) or "from django" in added_lines or "import django" in added_lines:
+        return "Python/Django"
+
+    # FastAPI / Flask
+    if "from fastapi" in added_lines or "import fastapi" in added_lines:
+        return "Python/FastAPI"
+    if "from flask" in added_lines or "import flask" in added_lines:
+        return "Python/Flask"
+
+    # Spring Boot
+    if "springframework" in added_lines.lower() or any("application.properties" in f for f in filenames):
+        return "Java/Spring Boot"
+
+    # Rails
+    if "rb" in exts and ("rails" in added_lines.lower() or any("gemfile" in f for f in filenames)):
+        return "Ruby/Rails"
+
+    # Express / Node
+    if "express" in added_lines.lower() and exts & {"js", "ts"}:
+        return "Node.js/Express"
+
+    # --- Language fallback (when no framework detected) ---
+    if "py" in exts:
+        return "Python"
+    if exts & {"ts", "tsx"}:
+        return "TypeScript"
+    if exts & {"js", "jsx"}:
+        return "JavaScript"
+    if "go" in exts:
+        return "Go"
+    if "rs" in exts:
+        return "Rust"
+    if "java" in exts:
+        return "Java"
+    if "rb" in exts:
+        return "Ruby"
+
+    return "Unknown"
+
+
 @app.post("/webhook")
 async def github_webhook(request: Request, x_hub_signature_256: str = Header(None)):
     # 1. Read body once — parse manually to avoid double-read bug
@@ -46,7 +119,7 @@ async def github_webhook(request: Request, x_hub_signature_256: str = Header(Non
     try:
         details = gh.get_pr_details(repo_name, pr_num)
     except RuntimeError as e:
-        print(f"❌ Could not fetch PR details: {e}")
+        print(f" Could not fetch PR details: {e}")
         gh.post_pr_comment(
             repo_name, pr_num,
             f"### PR-Pilot AI Audit\n\n"
@@ -55,14 +128,14 @@ async def github_webhook(request: Request, x_hub_signature_256: str = Header(Non
         )
         return {"status": "error", "reason": str(e)}
 
-    print(f"🚀 [AUDIT STARTING] PR #{pr_num} on {repo_name}")
+    print(f" [AUDIT STARTING] PR #{pr_num} on {repo_name}")
 
     # 6. Build inputs — all keys must match {brackets} in tasks.yaml
     inputs = {
         "diff": details["diff"],
         "pr_body": details["body"],
         "repo_name": repo_name,
-        "tech_stack": "Auto-detected",       # Scout agent will refine this
+        "tech_stack": _detect_tech_stack(details["diff"]),
         "issue_description": details["issue_body"],  # real issue, not a placeholder
         "pr_branch": pr_branch,              # for test executor sandbox clone
         "github_token": gh.token,            # short-lived installation token (Option A)
@@ -73,31 +146,31 @@ async def github_webhook(request: Request, x_hub_signature_256: str = Header(Non
         crew_instance = PrToolCrew().crew()
         result = await asyncio.to_thread(crew_instance.kickoff, inputs=inputs)
     except Exception as e:
-        print(f"❌ Crew failed: {e}")
+        print(f" Crew failed: {e}")
         gh.post_pr_comment(
             repo_name, pr_num,
             f"### PR-Pilot AI Audit\n\n"
-            f"💥 Review failed with an internal error. Please re-open or push a new commit to retry."
+            f" Review failed with an internal error. Please re-open or push a new commit to retry."
         )
         return {"status": "error", "reason": str(e)}
 
-    print("\n✅ [AUDIT COMPLETE]")
+    print("\n [AUDIT COMPLETE]")
 
     # 8. Post the verdict comment back to GitHub
     try:
         verdict = result.pydantic
         if verdict and verdict.comment_draft:
-            print("📝 Posting verdict to GitHub...")
+            print(" Posting verdict to GitHub...")
             final_comment = f"### PR-Pilot AI Audit\n\n{verdict.comment_draft}"
             gh.post_pr_comment(repo_name, pr_num, final_comment)
         else:
-            print("⚠️  No comment_draft in verdict — posting raw output.")
+            print(" No comment_draft in verdict — posting raw output.")
             gh.post_pr_comment(
                 repo_name, pr_num,
                 f"### PR-Pilot AI Audit\n\n```\n{result.raw}\n```"
             )
     except Exception as e:
-        print(f"❌ Error posting comment: {e}")
+        print(f" Error posting comment: {e}")
         print(f"Raw output: {result.raw}")
 
     return {"status": "accepted"}
@@ -105,4 +178,4 @@ async def github_webhook(request: Request, x_hub_signature_256: str = Header(Non
 
 @app.get("/")
 async def root():
-    return {"message": "PR-Pilot Auditor is Online"}
+    return {"message": "MergeMate Auditor is Online"}

@@ -1,14 +1,12 @@
 from crewai import Agent, Crew, Process, Task
-from prtool.tools.custom_tool import FormatReviewComment
 from prtool.tools.semgrep_tool import SemgrepScanTool
 from crewai.project import CrewBase, agent, crew, task
-from prtool.schemas import CodeReviewReport, ReviewVerdict, IntentSummary, CodeFinding, ProjectContext
+from prtool.schemas import CodeReviewReport, ReviewVerdict, IntentSummary, CodeFinding
 from crewai import LLM
 import os
 
 @CrewBase
 class PrToolCrew():
-    # Use separate providers to stay within each provider's free-tier RPM limits.
 
     _groq_model = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
     _openrouter_model = os.environ.get("OPENROUTER_MODEL", "openai/gpt-4o-mini")
@@ -30,18 +28,10 @@ class PrToolCrew():
     tasks_config = 'config/tasks.yaml'
 
     # ------------------------------------------------------------------
-    # Agents
+    # Agents — 5 agents, down from 7
+    # Dropped: scout (replaced by simple tech_stack detection in api.py)
+    #          simulation_engineer (output overlapped with diff_reviewer/verifier)
     # ------------------------------------------------------------------
-
-    @agent
-    def scout(self) -> Agent:
-        return Agent(
-            config=self.agents_config['scout'],
-            llm=self.llm_openrouter,
-            max_iter=2,
-            max_retry_limit=0,
-            verbose=True,
-        )
 
     @agent
     def intent_extractor(self) -> Agent:
@@ -65,18 +55,8 @@ class PrToolCrew():
             config=self.agents_config['security_scanner'],
             llm=self.llm_groq,
             tools=[SemgrepScanTool()],
-            max_iter=2,          # run the tool once, interpret once
+            max_iter=2,
             max_retry_limit=1,
-            verbose=True,
-        )
-
-
-
-    @agent
-    def simulation_engineer(self) -> Agent:
-        return Agent(
-            config=self.agents_config['simulation_engineer'],
-            llm=self.llm_groq,
             verbose=True,
         )
 
@@ -101,14 +81,6 @@ class PrToolCrew():
     # ------------------------------------------------------------------
 
     @task
-    def scouting_task(self) -> Task:
-        return Task(
-            config=self.tasks_config['scouting_task'],
-            agent=self.scout(),
-            output_pydantic=ProjectContext,
-        )
-
-    @task
     def extraction_task(self) -> Task:
         return Task(
             config=self.tasks_config['extraction_task'],
@@ -121,7 +93,7 @@ class PrToolCrew():
         return Task(
             config=self.tasks_config['review_task'],
             agent=self.diff_reviewer(),
-            context=[self.scouting_task(), self.extraction_task()],
+            context=[self.extraction_task()],
             verbose=True,
         )
 
@@ -130,25 +102,6 @@ class PrToolCrew():
         return Task(
             config=self.tasks_config['security_scan_task'],
             agent=self.security_scanner(),
-            # Runs independently — only needs the diff, which is in the task description.
-            # No context dependencies so it can run right after scouting.
-            context=[self.scouting_task()],
-            verbose=True,
-        )
-
-
-
-    @task
-    def simulation_task(self) -> Task:
-        return Task(
-            config=self.tasks_config['simulation_task'],
-            agent=self.simulation_engineer(),
-            context=[
-                self.scouting_task(),
-                self.extraction_task(),
-                self.review_task(),
-                self.security_scan_task(),
-            ],
             verbose=True,
         )
 
@@ -158,11 +111,9 @@ class PrToolCrew():
             config=self.tasks_config['verification_task'],
             agent=self.verifier(),
             context=[
-                self.scouting_task(),
                 self.extraction_task(),
                 self.review_task(),
                 self.security_scan_task(),
-                self.simulation_task(),
             ],
             output_pydantic=CodeReviewReport,
         )
@@ -188,11 +139,9 @@ class PrToolCrew():
         return Crew(
             agents=self.agents,
             tasks=[
-                self.scouting_task(),
                 self.extraction_task(),
                 self.review_task(),
                 self.security_scan_task(),
-                self.simulation_task(),
                 self.verification_task(),
                 self.decision_task(),
             ],
