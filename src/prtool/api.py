@@ -86,6 +86,34 @@ def _detect_tech_stack(diff: str) -> str:
     return "Unknown"
 
 
+
+def _post_fallback_comment(gh, repo_name: str, pr_num: int, error: str, result=None):
+    """
+    Always posts something to the PR — never goes silent on failure.
+    Tries to extract partial output from result.raw before giving up.
+    """
+    raw_snippet = ""
+    if result is not None:
+        try:
+            raw = getattr(result, "raw", "") or ""
+            if raw.strip():
+                raw_snippet = f"\n\nPartial output:\n```\n{raw[:1000]}\n```"
+        except Exception:
+            pass
+
+    comment = (
+        f"### PR-Pilot AI Audit\n\n"
+        f"Review encountered an issue and could not complete normally.\n\n"
+        f"**Error:** `{error[:300]}`"
+        f"{raw_snippet}\n\n"
+        f"Push a new commit to trigger a fresh review."
+    )
+    try:
+        gh.post_pr_comment(repo_name, pr_num, comment)
+    except Exception as post_err:
+        print(f"❌ Could not post fallback comment: {post_err}")
+
+
 @app.post("/webhook")
 async def github_webhook(request: Request, x_hub_signature_256: str = Header(None)):
     # 1. Read body once — parse manually to avoid double-read bug
@@ -119,16 +147,16 @@ async def github_webhook(request: Request, x_hub_signature_256: str = Header(Non
     try:
         details = gh.get_pr_details(repo_name, pr_num)
     except RuntimeError as e:
-        print(f" Could not fetch PR details: {e}")
+        print(f"❌ Could not fetch PR details: {e}")
         gh.post_pr_comment(
             repo_name, pr_num,
-            f"### PR-Pilot AI Audit\n\n"
-            f"Could not start review: `{e}`\n\n"
+            f"### 🤖 MergeMate AI Audit\n\n"
+            f"⚠️ Could not start review: `{e}`\n\n"
             f"Please ensure the PR contains code changes and try again."
         )
         return {"status": "error", "reason": str(e)}
 
-    print(f" [AUDIT STARTING] PR #{pr_num} on {repo_name}")
+    print(f"🚀 [AUDIT STARTING] PR #{pr_num} on {repo_name}")
 
     # 6. Build inputs — all keys must match {brackets} in tasks.yaml
     inputs = {
@@ -143,40 +171,42 @@ async def github_webhook(request: Request, x_hub_signature_256: str = Header(Non
     }
 
     # 7. Run the crew in a thread — never block the async event loop
+    result = None
     try:
         crew_instance = PrToolCrew().crew()
         result = await asyncio.to_thread(crew_instance.kickoff, inputs=inputs)
     except Exception as e:
-        print(f" Crew failed: {e}")
-        gh.post_pr_comment(
-            repo_name, pr_num,
-            f"### PR-Pilot AI Audit\n\n"
-            f" Review failed with an internal error. Please re-open or push a new commit to retry."
-        )
+        print(f"❌ Crew failed: {e}")
+        # Don't go silent — post what we know, then return
+        _post_fallback_comment(gh, repo_name, pr_num, str(e), result)
         return {"status": "error", "reason": str(e)}
 
-    print("\n [AUDIT COMPLETE]")
+    print("\n✅ [AUDIT COMPLETE]")
 
     # 8. Post the verdict comment back to GitHub
     try:
         verdict = result.pydantic
         if verdict and verdict.comment_draft:
-            print(" Posting verdict to GitHub...")
+            print("📝 Posting verdict to GitHub...")
             final_comment = f"### PR-Pilot AI Audit\n\n{verdict.comment_draft}"
             gh.post_pr_comment(repo_name, pr_num, final_comment)
-        else:
-            print(" No comment_draft in verdict — posting raw output.")
+        elif result.raw:
+            print("⚠️  No structured verdict — posting raw output.")
             gh.post_pr_comment(
                 repo_name, pr_num,
-                f"### PR-Pilot AI Audit\n\n```\n{result.raw}\n```"
+                f"### PR-Pilot AI Audit\n\n{result.raw}"
             )
+        else:
+            gh.post_pr_comment(repo_name, pr_num,
+                "### PR-Pilot AI Audit\n\nReview completed but produced no output. "
+                "Please push a new commit to retry.")
     except Exception as e:
-        print(f" Error posting comment: {e}")
-        print(f"Raw output: {result.raw}")
+        print(f"❌ Error posting comment: {e}")
+        _post_fallback_comment(gh, repo_name, pr_num, str(e), result)
 
     return {"status": "accepted"}
 
 
 @app.get("/")
 async def root():
-    return {"message": "PR-Pilot Auditor is Online"}
+    return {"message": "MergeMate Auditor is Online"}
