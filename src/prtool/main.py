@@ -28,23 +28,27 @@ def run():
         sys.exit(1)
     
     inputs = {
-        "test_case": test_case_id,78
+        "test_case": test_case_id,
         "data_path": str(data_path),
         "repo_name": "PR-Pilot-Lab",
         "issue_number": "001",
-        "tech_stack": "Detected Technology"
+        "tech_stack": "Detected Technology",
+        "current_datetime": datetime.now().strftime("%Y-%m-%d %H:%M %Z"),
+        "pr_body": (data_path / "pr_body.md").read_text(encoding="utf-8") if (data_path / "pr_body.md").exists() else "No PR body",
+        "issue_description": (data_path / "issue.md").read_text(encoding="utf-8") if (data_path / "issue.md").exists() else "No Issue",
+        "diff": (data_path / "diff.txt").read_text(encoding="utf-8") if (data_path / "diff.txt").exists() else ""
     }
     print(f"\n{'='*60}")
-    print(f"🚀 STARTING PHASE 1: THE BRAIN TEST")
-    print(f"📂 Folder: data/{test_case_id}")
-    print(f"⏰ Time: {datetime.now().strftime('%H:%M:%S')}")
+    print(f" STARTING PHASE 1: THE BRAIN TEST")
+    print(f" Folder: data/{test_case_id}")
+    print(f" Time: {datetime.now().strftime('%H:%M:%S')}")
     
     try:
        
         result = PrToolCrew().crew().kickoff(inputs=inputs)
 
         
-        print("\n" + "✅" + " ANALYSIS COMPLETE " + "✅")
+        print("\n" + " " + " ANALYSIS COMPLETE " + " ")
         
         print("\n[1] MACHINE-READABLE VERDICT (JSON)")
         print("-" * 40)
@@ -58,7 +62,7 @@ def run():
         print("-" * 40)
 
     except Exception as e:
-        print(f"\n💥 CRITICAL ERROR during review: {e}")
+        print(f"\n CRITICAL ERROR during review: {e}")
         print("\n[TRACEBACK]")
         print(traceback.format_exc())
         sys.exit(1)

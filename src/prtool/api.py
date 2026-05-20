@@ -123,7 +123,7 @@ async def github_webhook(request: Request, x_hub_signature_256: str = Header(Non
         gh.post_pr_comment(
             repo_name, pr_num,
             f"### PR-Pilot AI Audit\n\n"
-            f"⚠️ Could not start review: `{e}`\n\n"
+            f"Could not start review: `{e}`\n\n"
             f"Please ensure the PR contains code changes and try again."
         )
         return {"status": "error", "reason": str(e)}
@@ -139,6 +139,7 @@ async def github_webhook(request: Request, x_hub_signature_256: str = Header(Non
         "issue_description": details["issue_body"],  # real issue, not a placeholder
         "pr_branch": pr_branch,              # for test executor sandbox clone
         "github_token": gh.token,            # short-lived installation token (Option A)
+        "current_datetime": __import__('datetime').datetime.now().strftime("%Y-%m-%d %H:%M %Z"),
     }
 
     # 7. Run the crew in a thread — never block the async event loop
@@ -178,4 +179,4 @@ async def github_webhook(request: Request, x_hub_signature_256: str = Header(Non
 
 @app.get("/")
 async def root():
-    return {"message": "MergeMate Auditor is Online"}
+    return {"message": "PR-Pilot Auditor is Online"}

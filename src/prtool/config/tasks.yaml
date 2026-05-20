@@ -32,8 +32,13 @@ review_task:
     You MUST cite the filename and line numbers for every finding.
     If you are not confident about a line number, cite the function name instead.
   expected_output: >
-    A detailed list of code findings including filename, line numbers,
-    severity, and suggestions.
+    For each function/feature in the diff:
+    1. A mechanical description of what the code does — which variables it reads,
+       what conditions it checks, what it returns. Never copy the docstring.
+    2. If a real bug exists: filename, line number, severity, exact consequence.
+    3. If no bug: explicitly state the function passes review and why.
+    The decider reads your output to write the final comment — give it
+    specific mechanical detail, not paraphrased PR descriptions.
   agent: diff_reviewer
 
 security_scan_task:
@@ -114,42 +119,28 @@ verification_task:
 
 decision_task:
   description: >
-    Review the CodeReviewReport and write a GitHub comment.
+    Review the CodeReviewReport and write a GitHub PR review comment.
 
-    THE COMMENT FORMAT IS STRICT — follow it exactly:
+    Use the EXACT format defined in the decider agent's backstory.
+    The comment must use proper markdown with ### headers, **bold**, and bullet points.
 
-    Line 1: "PR Review — confidence: X.XX/1.0"
-    Line 2: blank
-    Line 3: "Verdict: [one of: Merge | Merge with suggestions | Do not merge]"
-    Line 4: blank
-    Line 5: "Score breakdown:" (only include this section if confidence < 1.0)
-    Then list each deduction as:
-    "- (-0.XX) [specific reason with function name and line number if applicable]"
-    Line after breakdown: blank
-    Then: "What was reviewed:"
-    List each function/feature as:
-    "- [FunctionName()]: [one sentence saying what it does and that logic is correct]"
-    OR if there is a real bug:
-    "- [FunctionName()]: [one sentence saying what it does and what specifically is wrong]"
-    Line after reviewed: blank
-    Then: "Security scan: [clean / X findings — list each briefly]"
-    Line after security: blank
-    If verdict is "Merge with suggestions", add:
-    "Required before merge:"
-    List each required fix as:
-    "- [filename] line [N]: [exact failure that will occur without this fix]"
+    BEFORE WRITING:
+    1. Check code_findings — if empty, verdict is "Strongly Recommended to Merge"
+    2. Check security scan — if clean, say so in one line
+    3. Pull mechanical descriptions from the diff_reviewer output for Positive Points.
+       Do NOT use the PR description or docstring — use what the reviewer observed.
+    4. For the timestamp, use: {current_datetime}
 
-    VERDICT RULES:
-    - confidence 0.8 to 1.0 AND code_findings is [] → Merge
-    - confidence 0.5 to 0.79 OR code_findings has low-severity items → Merge with suggestions
-    - confidence below 0.5 OR any HIGH/CRITICAL finding → Do not merge
-    - If code_findings is [] → confidence must be 0.85 minimum, verdict must be Merge
+    CONTENT RULES:
+    - Summary must reference actual function names and say whether the goal was achieved
+    - Positive Points must describe specific logic observed, not generic praise
+    - Suggestions only if genuinely useful — label Minor or Nit
+    - Recommendation ends with a single bold sentence verdict
+    - Analysis Details section always included at the bottom
 
-    NO EMOJIS. NO MARKDOWN HEADERS WITH ##. NO "I recommend". NO "consider".
-    Write like a senior engineer leaving a code review note, not like an AI assistant.
     Output valid JSON only. Use \n for line breaks in comment_draft.
   expected_output: >
     A ReviewVerdict object with verdict, confidence (0.0-1.0), summary, and comment_draft.
-    comment_draft must be a valid JSON string using \n for line breaks.
-    No emojis. No ## headers. Plain text formatted exactly as described above.
+    comment_draft must be valid JSON string with \n for line breaks.
+    Must follow the ### PR-Pilot AI Review format exactly as defined in agent backstory.
   agent: decider
