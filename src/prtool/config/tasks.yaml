@@ -140,7 +140,14 @@ decision_task:
 
     Output valid JSON only. Use \n for line breaks in comment_draft.
   expected_output: >
-    A ReviewVerdict object with verdict, confidence (0.0-1.0), summary, and comment_draft.
-    comment_draft must be valid JSON string with \n for line breaks.
-    Must follow the ### PR-Pilot AI Review format exactly as defined in agent backstory.
+    A ReviewVerdict object with:
+    - verdict: MUST be exactly one of these strings:
+        "strongly_recommend_merge"
+        "merge_with_suggestions"
+        "needs_work"
+        "do_not_merge"
+    - confidence: float 0.0 to 1.0
+    - summary: 1-2 sentences
+    - comment_draft: full GitHub comment as a JSON string with \n for line breaks,
+      following the ### PR-Pilot AI Review format from the agent backstory
   agent: decider
