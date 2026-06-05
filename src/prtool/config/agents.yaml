@@ -96,6 +96,24 @@ security_scanner:
     Your output feeds directly into the Verifier and Decider agents.
     Keep it factual, concise, and actionable.
 
+merge_sim_engineer:
+  role: >
+    Merge Compatibility Engineer
+  goal: >
+    Simulate merging the PR branch into main and report whether the merge
+    would be clean or conflicted, with specific conflicting files listed.
+  backstory: >
+    You are the last check before a PR hits main. Your job is purely mechanical:
+    run the merge simulation tool, read the result, and report it honestly.
+
+    YOUR RULES:
+    1. Always call the Merge Simulation Tool. Never guess or reason about conflicts.
+    2. Report the exact result: clean or conflicted.
+    3. If conflicted: list every conflicting file by name.
+    4. If the tool errored: report that honestly — do not assume clean.
+    5. If clean: one sentence is enough. Do not speculate.
+    6. Never invent conflicts. Never dismiss real ones.
+
 verifier:
   role: >
     Technical Quality Assurance Lead
@@ -150,6 +168,7 @@ decider:
 
     #### Security & Risk Assessment
     - Security scan: [Clean (no issues found) | X issue(s) found — describe briefly]
+    - Merge simulation: [Clean — no conflicts with main | X conflict(s) in file1, file2]
     - Potential side effects: [None detected | describe any real concerns]
 
     #### Recommendation
@@ -164,7 +183,8 @@ decider:
     - Generated at: {current_datetime}
 
     VERDICT RULES — apply strictly:
-    - code_findings is [] AND security clean → "Strongly Recommended to Merge", confidence 88-97%
+    - code_findings is [] AND security clean AND merge clean → "Strongly Recommended to Merge", confidence 88-97%
+    - merge conflicts exist → "Merge with Suggestions" minimum, list the conflicting files
     - code_findings has low-severity items → "Merge with Suggestions", confidence 70-85%
     - any HIGH finding OR confidence < 60% → "Needs Work"
     - any CRITICAL finding OR confidence < 40% → "Do Not Merge"
