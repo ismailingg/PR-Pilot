@@ -3,15 +3,27 @@ import hashlib
 import json
 import os
 import asyncio
+import time
+import uuid
+from datetime import datetime
 from fastapi import FastAPI, Request, Header, HTTPException
 from dotenv import load_dotenv
 
 from prtool.utils.github_manager import GitHubManager
 from prtool.crew import PrToolCrew
+from prtool.audit_logger import (
+    init_db,
+    log_run_started,
+    log_run_completed,
+    log_run_failed,
+    log_agent_step,
+)
 
 load_dotenv()
 app = FastAPI()
 
+# Initialise SQLite tables once at startup
+init_db()
 
 
 def _detect_tech_stack(diff: str) -> str:
@@ -86,7 +98,6 @@ def _detect_tech_stack(diff: str) -> str:
     return "Unknown"
 
 
-
 def _post_fallback_comment(gh, repo_name: str, pr_num: int, error: str, result=None):
     """
     Always posts something to the PR — never goes silent on failure.
@@ -137,9 +148,9 @@ async def github_webhook(request: Request, x_hub_signature_256: str = Header(Non
     if action not in ["opened", "synchronize"]:
         return {"status": "ignored", "reason": f"action '{action}' not handled"}
 
-    repo_name = data["repository"]["full_name"]
-    pr_num = data["pull_request"]["number"]
-    pr_branch = data["pull_request"]["head"]["ref"]   # branch name for test runner
+    repo_name  = data["repository"]["full_name"]
+    pr_num     = data["pull_request"]["number"]
+    pr_branch  = data["pull_request"]["head"]["ref"]
     install_id = data["installation"]["id"]
 
     # 5. Fetch live PR details — raises RuntimeError if diff is missing/empty
@@ -156,55 +167,119 @@ async def github_webhook(request: Request, x_hub_signature_256: str = Header(Non
         )
         return {"status": "error", "reason": str(e)}
 
-    print(f"🚀 [AUDIT STARTING] PR #{pr_num} on {repo_name}")
+    tech_stack = _detect_tech_stack(details["diff"])
+    run_id     = str(uuid.uuid4())
+    start_time = time.time()
 
-    # 6. Build inputs — all keys must match {brackets} in tasks.yaml
+    print(f"🚀 [AUDIT STARTING] PR #{pr_num} on {repo_name} | run_id={run_id}")
+
+    # 6. Log run start to SQLite
+    log_run_started(
+        run_id=run_id,
+        repo_name=repo_name,
+        pr_number=pr_num,
+        pr_branch=pr_branch,
+        tech_stack=tech_stack,
+    )
+
+    # 7. Build inputs — all keys must match {brackets} in tasks.yaml
     inputs = {
-        "diff": details["diff"],
-        "pr_body": details["body"],
-        "repo_name": repo_name,
-        "tech_stack": _detect_tech_stack(details["diff"]),
-        "issue_description": details["issue_body"],  # real issue, not a placeholder
-        "pr_branch": pr_branch,              # for test executor sandbox clone
-        "github_token": gh.token,            # short-lived installation token (Option A)
-        "current_datetime": __import__('datetime').datetime.now().strftime("%Y-%m-%d %H:%M %Z"),
+        "diff":              details["diff"],
+        "pr_body":           details["body"],
+        "repo_name":         repo_name,
+        "tech_stack":        tech_stack,
+        "issue_description": details["issue_body"],
+        "pr_branch":         pr_branch,
+        "github_token":      gh.token,
+        "current_datetime":  datetime.now().strftime("%Y-%m-%d %H:%M %Z"),
     }
 
-    # 7. Run the crew in a thread — never block the async event loop
+    # 8. Run the crew in a thread — never block the async event loop
     result = None
     try:
         crew_instance = PrToolCrew().crew()
         result = await asyncio.to_thread(crew_instance.kickoff, inputs=inputs)
     except Exception as e:
+        duration = round(time.time() - start_time, 1)
         print(f"❌ Crew failed: {e}")
-        # Don't go silent — post what we know, then return
+        log_run_failed(run_id, str(e), duration)
         _post_fallback_comment(gh, repo_name, pr_num, str(e), result)
         return {"status": "error", "reason": str(e)}
 
-    print("\n✅ [AUDIT COMPLETE]")
+    duration = round(time.time() - start_time, 1)
+    print(f"\n✅ [AUDIT COMPLETE] duration={duration}s")
 
-    # 8. Post the verdict comment back to GitHub
+    # 9. Post the verdict comment back to GitHub
+    comment_posted = False
+    verdict_str    = "unknown"
+    confidence     = 0.0
+    quality_score  = 0.0
+    security_score = 0.0
+
     try:
         verdict = result.pydantic
         if verdict and verdict.comment_draft:
             print("📝 Posting verdict to GitHub...")
             final_comment = f"### PR-Pilot AI Audit\n\n{verdict.comment_draft}"
             gh.post_pr_comment(repo_name, pr_num, final_comment)
+            comment_posted = True
+            verdict_str = (
+                verdict.verdict.value
+                if hasattr(verdict.verdict, "value")
+                else str(verdict.verdict)
+            )
+            confidence = float(verdict.confidence)
         elif result.raw:
             print("⚠️  No structured verdict — posting raw output.")
             gh.post_pr_comment(
                 repo_name, pr_num,
                 f"### PR-Pilot AI Audit\n\n{result.raw}"
             )
+            comment_posted = True
         else:
-            gh.post_pr_comment(repo_name, pr_num,
+            gh.post_pr_comment(
+                repo_name, pr_num,
                 "### PR-Pilot AI Audit\n\nReview completed but produced no output. "
-                "Please push a new commit to retry.")
+                "Please push a new commit to retry."
+            )
+
+        # Extract quality/security scores and log each agent step
+        try:
+            for task_out in (result.tasks_output or []):
+                # Pull scores from the verification task pydantic output
+                if hasattr(task_out, "pydantic") and task_out.pydantic:
+                    p = task_out.pydantic
+                    if hasattr(p, "quality_score"):
+                        quality_score  = float(p.quality_score)
+                    if hasattr(p, "security_score"):
+                        security_score = float(p.security_score)
+
+                # Log the agent step
+                log_agent_step(
+                    run_id=run_id,
+                    agent_name=str(getattr(task_out, "agent", "unknown")),
+                    task_name=str(getattr(task_out, "name", "unknown")),
+                    output=getattr(task_out, "raw", "") or "",
+                )
+        except Exception as log_err:
+            print(f"⚠️  Could not log agent steps: {log_err}")
+
     except Exception as e:
         print(f"❌ Error posting comment: {e}")
         _post_fallback_comment(gh, repo_name, pr_num, str(e), result)
 
-    return {"status": "accepted"}
+    # 10. Log run completion
+    log_run_completed(
+        run_id=run_id,
+        verdict=verdict_str,
+        confidence=confidence,
+        quality_score=quality_score,
+        security_score=security_score,
+        comment_posted=comment_posted,
+        duration_seconds=duration,
+    )
+
+    return {"status": "accepted", "run_id": run_id}
 
 
 @app.get("/")
