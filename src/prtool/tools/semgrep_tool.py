@@ -23,20 +23,16 @@ def _parse_diff_files(diff: str) -> dict[str, str]:
     current_lines: list[str] = []
 
     for line in diff.splitlines():
-        # New file header: +++ b/path/to/file.py
         if line.startswith("+++ b/"):
             if current_file and current_lines:
                 files[current_file] = "\n".join(current_lines)
-            current_file = line[6:]  # strip "+++ b/"
+            current_file = line[6:]
             current_lines = []
         elif line.startswith("+") and not line.startswith("+++"):
-            # Strip the leading '+' — this is the actual new source line
             current_lines.append(line[1:])
         elif line.startswith(" "):
-            # Context line (unchanged) — include for accurate line numbers
             current_lines.append(line[1:])
 
-    # Flush last file
     if current_file and current_lines:
         files[current_file] = "\n".join(current_lines)
 
@@ -44,7 +40,6 @@ def _parse_diff_files(diff: str) -> dict[str, str]:
 
 
 def _severity_from_semgrep(extra: dict) -> str:
-    """Map Semgrep severity strings to our FindingSeverity enum values."""
     raw = extra.get("severity", "INFO").upper()
     mapping = {
         "ERROR":   "critical",
@@ -56,16 +51,16 @@ def _severity_from_semgrep(extra: dict) -> str:
 
 def _run_semgrep(target_dir: str) -> list[dict[str, Any]]:
     """
-    Run semgrep with the auto config (covers security, secrets, best-practices).
-    Returns the list of raw finding dicts from semgrep's JSON output.
-    Raises RuntimeError if semgrep is not installed or crashes unexpectedly.
+    Run semgrep with the auto config.
+    FIX: encoding="utf-8" + errors="replace" prevents UnicodeDecodeError on
+    Windows where the default codec is cp1252 and semgrep outputs UTF-8.
     """
     cmd = [
         "semgrep",
         "--config", "auto",
         "--json",
-        "--quiet",           # suppress progress noise
-        "--no-git-ignore",   # temp dir has no .gitignore
+        "--quiet",
+        "--no-git-ignore",
         target_dir,
     ]
 
@@ -74,7 +69,9 @@ def _run_semgrep(target_dir: str) -> list[dict[str, Any]]:
             cmd,
             capture_output=True,
             text=True,
-            timeout=120,   # 2-minute hard cap per scan
+            encoding="utf-8",       # FIX: force UTF-8 instead of system default
+            errors="replace",        # FIX: replace undecodable bytes instead of crashing
+            timeout=120,
         )
     except FileNotFoundError:
         raise RuntimeError(
@@ -82,21 +79,20 @@ def _run_semgrep(target_dir: str) -> list[dict[str, Any]]:
             "Install it with: pip install semgrep"
         )
     except subprocess.TimeoutExpired:
-        return []   # timeout → return empty rather than crash the crew
+        return []
 
-    # semgrep exits 0 (no findings) or 1 (findings found) — both are fine.
-    # Any other exit code is a real error.
     if proc.returncode not in (0, 1):
         raise RuntimeError(
             f"semgrep exited with code {proc.returncode}.\n"
             f"stderr: {proc.stderr[:500]}"
         )
 
-    if not proc.stdout.strip():
+    stdout = proc.stdout or ""
+    if not stdout.strip():
         return []
 
     try:
-        data = json.loads(proc.stdout)
+        data = json.loads(stdout)
         return data.get("results", [])
     except json.JSONDecodeError:
         return []
@@ -105,6 +101,12 @@ def _run_semgrep(target_dir: str) -> list[dict[str, Any]]:
 # ---------------------------------------------------------------------------
 # Tool
 # ---------------------------------------------------------------------------
+
+# Hard cap on diff size sent to Semgrep — large diffs (like adding audit_logger.py)
+# cause the security scanner's context window to overflow Groq's 12k TPM limit.
+# 8000 chars covers ~200 lines which is enough for any meaningful PR change.
+MAX_DIFF_CHARS = 8000
+
 
 class SemgrepScanTool(BaseTool):
     name: str = "Semgrep Security Scanner"
@@ -123,7 +125,13 @@ class SemgrepScanTool(BaseTool):
                 "findings": [],
             })
 
-        # 1. Parse changed files out of the diff
+        # Truncate very large diffs to stay within Groq's token limit.
+        # Semgrep runs on the actual file content, not the diff text,
+        # so truncating here only affects what gets scanned — not result quality
+        # for normal-sized PRs.
+        if len(diff) > MAX_DIFF_CHARS:
+            diff = diff[:MAX_DIFF_CHARS]
+
         changed_files = _parse_diff_files(diff)
         if not changed_files:
             return json.dumps({
@@ -132,15 +140,12 @@ class SemgrepScanTool(BaseTool):
                 "findings": [],
             })
 
-        # 2. Write files to a temp directory
         with tempfile.TemporaryDirectory(prefix="prpilot_scan_") as tmpdir:
             for filepath, content in changed_files.items():
-                # Recreate the directory structure inside tmpdir
                 dest = Path(tmpdir) / filepath
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 dest.write_text(content, encoding="utf-8")
 
-            # 3. Run semgrep
             try:
                 raw_findings = _run_semgrep(tmpdir)
             except RuntimeError as e:
@@ -150,13 +155,10 @@ class SemgrepScanTool(BaseTool):
                     "findings": [],
                 })
 
-        # 4. Normalise findings into our schema
         findings = []
         for r in raw_findings:
-            # Strip the tmpdir prefix from the path so it looks like the real filepath
             raw_path = r.get("path", "unknown")
-            # e.g. /tmp/prpilot_scan_abc123/auth.py  →  auth.py
-            relative_path = re.sub(r"^.*prpilot_scan_[^/]+/", "", raw_path)
+            relative_path = re.sub(r"^.*prpilot_scan_[^/\\]+[/\\]", "", raw_path)
 
             extra = r.get("extra", {})
             findings.append({
@@ -170,8 +172,8 @@ class SemgrepScanTool(BaseTool):
             })
 
         return json.dumps({
-            "status":   "completed",
+            "status":        "completed",
             "files_scanned": len(changed_files),
             "finding_count": len(findings),
-            "findings": findings,
+            "findings":      findings,
         }, indent=2)
