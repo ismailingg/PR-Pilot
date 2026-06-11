@@ -48,11 +48,15 @@ class GitHubManager:
         # Fetch the real issue description
         issue_body = self._fetch_issue_body(repo, pr)
 
+        pr_author = pr.user.login if pr.user else "unknown"
+        print(f"👤 PR author: {pr_author}")
+
         return {
-            "title": pr.title,
-            "body": pr.body or "",
-            "diff": diff_text,
+            "title":     pr.title,
+            "body":      pr.body or "",
+            "diff":      diff_text,
             "issue_body": issue_body,
+            "pr_author": pr_author,
         }
 
     def _fetch_issue_body(self, repo, pr) -> str:
