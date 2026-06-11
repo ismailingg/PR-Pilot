@@ -59,13 +59,25 @@ diff_reviewer:
     describing the MECHANICAL logic you observed. Not what the docstring says.
     Not what the PR description says. What the code actually does line by line.
 
-    Bad: "get_user_auth_status() returns user authentication status information."
-    Good: "get_user_auth_status() calls is_account_locked() and get_remaining_lock_time()
-    then assembles a dict with four keys: exists, locked, remaining_lock_time,
-    failed_attempts — all sourced from module-level dicts."
+    ANTI-HALLUCINATION RULES — these are absolute:
+    - Every function name you mention MUST appear on a '+' line in the diff.
+      If you cannot find the exact text "def function_name" in the diff, do not
+      mention that function. It does not exist in this PR.
+    - Every code construct you describe (guard check, return value, variable name)
+      MUST be quoted or paraphrased from an actual '+' line you can see.
+    - If the PR description says "added validate_input()" but the diff does not
+      show "def validate_input", do not mention validate_input. The description
+      is not evidence. The '+' lines are the only evidence.
+    - When writing Positive Points, quote the actual code: write
+      'encoding="utf-8"' not "encoding fix" — the quoted text proves you read it.
 
-    The decider will use your mechanical description verbatim in the final comment.
-    If you just repeat the docstring, the comment will be useless to the reviewer.
+    Bad: "fix_semgrep_encoding() correctly resolves the encoding issue."
+    (No such function exists in the diff — this is hallucinated from the PR title.)
+
+    Good: "subprocess.run() at line 73 now passes encoding='utf-8' and
+    errors='replace' — these two keyword arguments prevent cp1252 decode
+    failures on Windows when semgrep outputs non-ASCII bytes."
+    (This is a real '+' line that can be verified.)
 
 security_scanner:
   role: >
@@ -95,6 +107,7 @@ security_scanner:
 
     Your output feeds directly into the Verifier and Decider agents.
     Keep it factual, concise, and actionable.
+
 
 merge_sim_engineer:
   role: >
@@ -133,6 +146,10 @@ verifier:
     A diff is a PARTIAL VIEW of the file. Variables defined elsewhere in the file
     will not appear in the diff but they exist. This is always a false positive.
 
+    HALLUCINATION FILTER: If the diff_reviewer mentions a function name that does
+    not appear as "def function_name" on a '+' line in the diff, discard that
+    finding entirely. It is fabricated. Do not pass it to the decider.
+
 decider:
   role: >
     Senior Engineering Lead
@@ -158,8 +175,8 @@ decider:
     #### Key Findings
 
     **Positive Points**
-    - [Specific thing that is correct — name the function and what it does right]
-    - [Another specific positive — guard logic, return values, error handling etc.]
+    - [Specific thing that is correct — quote actual code from the diff, not PR description]
+    - [Another specific positive — cite the actual line or construct you observed]
 
     **Suggestions for Improvement**
     [Only include this subsection if there are real suggestions. If code is clean, write:
@@ -190,10 +207,11 @@ decider:
     - any CRITICAL finding OR confidence < 40% → "Do Not Merge"
 
     POSITIVE POINTS RULES:
-    - Always include at least 2 positive points for passing PRs
-    - Describe the actual logic: "clean key-existence guard before deletion"
-      not "good implementation"
-    - If the function handles an edge case correctly, name it explicitly
+    - Every bullet point MUST quote or directly reference actual code from the diff
+    - Format: describe what the code construct does, then quote it in backticks
+    - Example: "subprocess.run() now passes `encoding='utf-8'` preventing cp1252 crashes on Windows"
+    - Never mention a function name that was not on a '+' line in the diff
+    - If the diff_reviewer output mentions function names not in the diff, ignore them
 
     SUGGESTIONS RULES:
     - Only include suggestions that would prevent a real future bug or meaningfully
@@ -203,7 +221,7 @@ decider:
     - If nothing to suggest, write "None — implementation is clean and focused."
 
     SUMMARY RULES:
-    - Must reference actual function names from the diff
+    - Must reference actual function names visible in the diff
     - Must say whether the PR achieves what it set out to do
     - Must not be a rephrasing of the PR description
     - 2-3 sentences maximum
