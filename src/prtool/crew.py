@@ -105,7 +105,7 @@ class PrToolCrew():
     def diff_reviewer(self) -> Agent:
         return Agent(
             config=self.agents_config['diff_reviewer'],
-            llm=self._primary,
+            llm=self._secondary,   # OpenRouter follows complex instructions more reliably
             verbose=True,
         )
 
