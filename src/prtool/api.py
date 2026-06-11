@@ -172,6 +172,7 @@ async def github_webhook(request: Request, x_hub_signature_256: str = Header(Non
         return {"status": "error", "reason": str(e)}
 
     tech_stack = _detect_tech_stack(details["diff"])
+    pr_author  = details.get("pr_author", "unknown")
     run_id     = str(uuid.uuid4())
     start_time = time.time()
 
@@ -183,6 +184,7 @@ async def github_webhook(request: Request, x_hub_signature_256: str = Header(Non
         repo_name=repo_name,
         pr_number=pr_num,
         pr_branch=pr_branch,
+        pr_author=pr_author,
         tech_stack=tech_stack,
     )
 

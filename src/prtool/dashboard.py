@@ -1,13 +1,5 @@
 """
-dashboard.py
-
-Simple read-only dashboard for PR-Pilot audit logs.
-Mount this in api.py with: app.include_router(dashboard_router)
-
-Routes:
-  GET /runs            — list recent reviews (JSON + HTML)
-  GET /runs/{run_id}   — full trace for one review
-  GET /stats           — summary stats
+dashboard.py — PR-Pilot audit dashboard, v2
 """
 
 from fastapi import APIRouter, Request
@@ -16,15 +8,13 @@ from prtool.audit_logger import get_recent_runs, get_run_by_id, get_agent_logs_f
 
 dashboard_router = APIRouter(prefix="/dashboard")
 
-
 # ---------------------------------------------------------------------------
-# JSON API routes (used programmatically)
+# JSON API routes
 # ---------------------------------------------------------------------------
 
 @dashboard_router.get("/runs")
 def list_runs(limit: int = 20):
     return get_recent_runs(limit)
-
 
 @dashboard_router.get("/runs/{run_id}")
 def get_run(run_id: str):
@@ -34,144 +24,340 @@ def get_run(run_id: str):
     logs = get_agent_logs_for_run(run_id)
     return {"run": run, "agent_logs": logs}
 
-
 @dashboard_router.get("/stats")
 def stats():
     return get_stats()
-
 
 # ---------------------------------------------------------------------------
 # HTML dashboard
 # ---------------------------------------------------------------------------
 
+VERDICT_META = {
+    "strongly_recommend_merge": ("#10b981", "Merge"),
+    "merge":                    ("#10b981", "Merge"),
+    "merge_with_suggestions":   ("#f59e0b", "Merge w/ Notes"),
+    "merge_with_advice":        ("#f59e0b", "Merge w/ Notes"),
+    "needs_work":               ("#f97316", "Needs Work"),
+    "needs_human_review":       ("#f97316", "Needs Work"),
+    "do_not_merge":             ("#ef4444", "Block"),
+    "block":                    ("#ef4444", "Block"),
+    "unknown":                  ("#475569", "Unknown"),
+    "failed":                   ("#ef4444", "Failed"),
+}
+
+STATUS_META = {
+    "completed": ("#10b981", "●"),
+    "started":   ("#f59e0b", "◌"),
+    "failed":    ("#ef4444", "✕"),
+}
+
+def _verdict_chip(verdict: str) -> str:
+    color, label = VERDICT_META.get(verdict, ("#475569", verdict or "—"))
+    return (
+        f'<span style="display:inline-flex;align-items:center;gap:5px;'
+        f'background:{color}18;color:{color};border:1px solid {color}40;'
+        f'padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;'
+        f'letter-spacing:0.04em;white-space:nowrap">{label}</span>'
+    )
+
+def _status_dot(status: str) -> str:
+    color, sym = STATUS_META.get(status, ("#475569", "?"))
+    return f'<span style="color:{color};font-size:13px" title="{status}">{sym}</span>'
+
 @dashboard_router.get("/", response_class=HTMLResponse)
 def dashboard_html():
-    runs = get_recent_runs(50)
-    stats = get_stats()
+    runs  = get_recent_runs(50)
+    s     = get_stats()
 
-    verdict_colors = {
-        "strongly_recommend_merge": "#22c55e",
-        "merge":                    "#22c55e",
-        "merge_with_suggestions":   "#f59e0b",
-        "merge_with_advice":        "#f59e0b",
-        "needs_work":               "#f97316",
-        "needs_human_review":       "#f97316",
-        "do_not_merge":             "#ef4444",
-        "block":                    "#ef4444",
-        "unknown":                  "#6b7280",
-        "failed":                   "#ef4444",
-    }
+    # Build verdict breakdown pills
+    breakdown_html = ""
+    for v, count in s.get("verdict_breakdown", {}).items():
+        color, label = VERDICT_META.get(v, ("#475569", v))
+        breakdown_html += (
+            f'<div style="display:flex;align-items:center;justify-content:space-between;'
+            f'padding:6px 0;border-bottom:1px solid #1e293b">'
+            f'<span style="color:{color};font-size:12px;font-weight:500">{label}</span>'
+            f'<span style="color:#f1f5f9;font-weight:700;font-size:13px">{count}</span>'
+            f'</div>'
+        )
+    if not breakdown_html:
+        breakdown_html = '<p style="color:#475569;font-size:12px;margin:8px 0">No data yet</p>'
 
-    status_colors = {
-        "completed": "#22c55e",
-        "started":   "#f59e0b",
-        "failed":    "#ef4444",
-    }
-
-    def verdict_badge(verdict):
-        color = verdict_colors.get(verdict, "#6b7280")
-        label = (verdict or "unknown").replace("_", " ").title()
-        return f'<span style="background:{color};color:white;padding:2px 8px;border-radius:4px;font-size:12px">{label}</span>'
-
-    def status_badge(status):
-        color = status_colors.get(status, "#6b7280")
-        return f'<span style="background:{color};color:white;padding:2px 8px;border-radius:4px;font-size:12px">{status}</span>'
-
+    # Build rows
     rows = ""
     for r in runs:
-        conf = f"{round(r['confidence'] * 100)}%" if r.get("confidence") else "—"
-        dur  = f"{r['duration_seconds']}s" if r.get("duration_seconds") else "—"
+        conf    = f"{round(r['confidence'] * 100)}%" if r.get("confidence") else "—"
+        dur_raw = r.get("duration_seconds")
+        dur     = f"{dur_raw:.1f}s" if dur_raw else "—"
+        branch  = r.get("pr_branch") or "—"
+        started = (r.get("started_at") or "")[:16].replace("T", " ")
         rows += f"""
-        <tr>
-            <td style="padding:8px;border-bottom:1px solid #1f2937">
-                <a href="/dashboard/runs/{r['run_id']}" style="color:#60a5fa;text-decoration:none">
-                    {r['run_id'][:8]}...
-                </a>
-            </td>
-            <td style="padding:8px;border-bottom:1px solid #1f2937">{r['repo_name']}</td>
-            <td style="padding:8px;border-bottom:1px solid #1f2937">#{r['pr_number']}</td>
-            <td style="padding:8px;border-bottom:1px solid #1f2937">{r.get('tech_stack','—')}</td>
-            <td style="padding:8px;border-bottom:1px solid #1f2937">{verdict_badge(r.get('verdict','unknown'))}</td>
-            <td style="padding:8px;border-bottom:1px solid #1f2937">{conf}</td>
-            <td style="padding:8px;border-bottom:1px solid #1f2937">{status_badge(r.get('status','unknown'))}</td>
-            <td style="padding:8px;border-bottom:1px solid #1f2937">{dur}</td>
-            <td style="padding:8px;border-bottom:1px solid #1f2937">{r.get('started_at','')[:16]}</td>
+        <tr class="row">
+          <td><a href="/dashboard/runs/{r['run_id']}" class="run-link">{r['run_id'][:8]}</a></td>
+          <td style="color:#cbd5e1">{r['repo_name']}</td>
+          <td style="color:#94a3b8">#{r['pr_number']}</td>
+          <td style="color:#94a3b8;font-family:'JetBrains Mono',monospace;font-size:11px">{r.get('pr_author','—')}</td>
+          <td style="color:#64748b;font-size:12px">{branch}</td>
+          <td style="color:#64748b;font-size:12px">{r.get('tech_stack','—')}</td>
+          <td>{_verdict_chip(r.get('verdict','unknown'))}</td>
+          <td style="color:#f1f5f9;font-weight:600;text-align:right">{conf}</td>
+          <td style="text-align:center">{_status_dot(r.get('status','unknown'))}</td>
+          <td style="color:#475569;font-size:12px;text-align:right">{dur}</td>
+          <td style="color:#475569;font-size:12px">{started}</td>
         </tr>"""
 
-    verdict_breakdown = ""
-    for v, count in stats.get("verdict_breakdown", {}).items():
-        color = verdict_colors.get(v, "#6b7280")
-        label = v.replace("_", " ").title()
-        verdict_breakdown += f'<div style="margin:4px 0"><span style="background:{color};color:white;padding:2px 8px;border-radius:4px;font-size:12px">{label}</span> <strong style="color:#e5e7eb">{count}</strong></div>'
+    if not rows:
+        rows = '<tr><td colspan="11" style="padding:40px;text-align:center;color:#334155">No reviews yet — open a PR to get started.</td></tr>'
+
+    avg_conf = s.get('avg_confidence', 0)
+    conf_color = "#10b981" if avg_conf >= 80 else "#f59e0b" if avg_conf >= 60 else "#ef4444"
 
     html = f"""<!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>PR-Pilot Dashboard</title>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <style>
-        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-                background: #0f172a; color: #e5e7eb; margin: 0; padding: 24px; }}
-        h1 {{ color: #f1f5f9; margin-bottom: 4px; }}
-        h2 {{ color: #94a3b8; font-size: 14px; font-weight: normal; margin-top: 0; }}
-        .cards {{ display: flex; gap: 16px; flex-wrap: wrap; margin: 24px 0; }}
-        .card {{ background: #1e293b; border-radius: 8px; padding: 20px; min-width: 160px; }}
-        .card-value {{ font-size: 32px; font-weight: bold; color: #f1f5f9; }}
-        .card-label {{ color: #64748b; font-size: 13px; margin-top: 4px; }}
-        table {{ width: 100%; border-collapse: collapse; background: #1e293b;
-                 border-radius: 8px; overflow: hidden; }}
-        th {{ background: #0f172a; padding: 10px 8px; text-align: left;
-              color: #64748b; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; }}
-        tr:hover td {{ background: #263148; }}
-        a {{ color: #60a5fa; }}
-    </style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>PR-Pilot</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
+
+    :root {{
+      --bg:        #080d14;
+      --surface:   #0d1520;
+      --border:    #1a2535;
+      --text:      #e2e8f0;
+      --muted:     #475569;
+      --accent:    #3b82f6;
+      --accent-dim:#1d3a6e;
+    }}
+
+    body {{
+      font-family: 'Inter', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      font-size: 13px;
+      line-height: 1.5;
+    }}
+
+    /* ── Top bar ── */
+    .topbar {{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 28px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }}
+    .logo {{
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }}
+    .logo-mark {{
+      width: 28px; height: 28px;
+      background: var(--accent);
+      border-radius: 7px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px; font-weight: 700; color: #fff;
+    }}
+    .logo-text {{
+      font-weight: 600;
+      font-size: 14px;
+      color: #f8fafc;
+      letter-spacing: -0.01em;
+    }}
+    .logo-sub {{
+      font-size: 11px;
+      color: var(--muted);
+      font-weight: 400;
+    }}
+    .live-dot {{
+      display: flex; align-items: center; gap: 6px;
+      font-size: 11px; color: var(--muted);
+    }}
+    .live-dot::before {{
+      content: '';
+      width: 6px; height: 6px;
+      background: #10b981;
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }}
+    @keyframes pulse {{
+      0%, 100% {{ opacity: 1; }}
+      50%       {{ opacity: 0.3; }}
+    }}
+
+    /* ── Layout ── */
+    .layout {{
+      display: grid;
+      grid-template-columns: 220px 1fr;
+      min-height: calc(100vh - 57px);
+    }}
+
+    /* ── Sidebar ── */
+    .sidebar {{
+      border-right: 1px solid var(--border);
+      padding: 24px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }}
+    .stat-block {{ padding: 0 4px; }}
+    .stat-number {{
+      font-size: 36px;
+      font-weight: 700;
+      font-family: 'JetBrains Mono', monospace;
+      line-height: 1;
+      letter-spacing: -0.03em;
+    }}
+    .stat-label {{
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      margin-top: 4px;
+      font-weight: 500;
+    }}
+    .divider {{
+      border: none;
+      border-top: 1px solid var(--border);
+    }}
+    .section-label {{
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--muted);
+      font-weight: 600;
+      padding: 0 4px;
+      margin-bottom: 6px;
+    }}
+
+    /* ── Main ── */
+    .main {{ padding: 24px 28px; overflow-x: auto; }}
+    .page-title {{
+      font-size: 15px;
+      font-weight: 600;
+      color: #f8fafc;
+      margin-bottom: 4px;
+    }}
+    .page-sub {{
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 20px;
+    }}
+
+    /* ── Table ── */
+    table {{
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }}
+    thead tr {{
+      border-bottom: 1px solid var(--border);
+    }}
+    th {{
+      text-align: left;
+      padding: 8px 12px;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      font-weight: 600;
+      white-space: nowrap;
+    }}
+    th:last-child, td:last-child {{ text-align: right; padding-right: 0; }}
+    .row td {{
+      padding: 11px 12px;
+      border-bottom: 1px solid #111a27;
+      vertical-align: middle;
+    }}
+    .row:hover td {{ background: #0d1a2a; }}
+    .run-link {{
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 500;
+    }}
+    .run-link:hover {{ color: #93c5fd; }}
+  </style>
 </head>
 <body>
-    <h1>PR-Pilot Dashboard</h1>
-    <h2>Audit log of all PR reviews</h2>
 
-    <div class="cards">
-        <div class="card">
-            <div class="card-value">{stats.get('total_reviews', 0)}</div>
-            <div class="card-label">Total Reviews</div>
-        </div>
-        <div class="card">
-            <div class="card-value" style="color:#22c55e">{stats.get('completed', 0)}</div>
-            <div class="card-label">Completed</div>
-        </div>
-        <div class="card">
-            <div class="card-value" style="color:#ef4444">{stats.get('failed', 0)}</div>
-            <div class="card-label">Failed</div>
-        </div>
-        <div class="card">
-            <div class="card-value">{stats.get('avg_confidence', 0)}%</div>
-            <div class="card-label">Avg Confidence</div>
-        </div>
-        <div class="card">
-            <div class="card-label" style="margin-bottom:8px">Verdict Breakdown</div>
-            {verdict_breakdown or '<span style="color:#64748b">No data yet</span>'}
-        </div>
+<header class="topbar">
+  <div class="logo">
+    <div class="logo-mark">P</div>
+    <div>
+      <div class="logo-text">PR-Pilot</div>
+      <div class="logo-sub">Review dashboard</div>
+    </div>
+  </div>
+  <div class="live-dot">Live</div>
+</header>
+
+<div class="layout">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="stat-block">
+      <div class="stat-number" style="color:#f8fafc">{s.get('total_reviews', 0)}</div>
+      <div class="stat-label">Total reviews</div>
     </div>
 
+    <div class="stat-block">
+      <div class="stat-number" style="color:#10b981">{s.get('completed', 0)}</div>
+      <div class="stat-label">Completed</div>
+    </div>
+
+    <div class="stat-block">
+      <div class="stat-number" style="color:#ef4444">{s.get('failed', 0)}</div>
+      <div class="stat-label">Failed</div>
+    </div>
+
+    <div class="stat-block">
+      <div class="stat-number" style="color:{conf_color}">{avg_conf}%</div>
+      <div class="stat-label">Avg confidence</div>
+    </div>
+
+    <hr class="divider">
+
+    <div>
+      <div class="section-label">Verdicts</div>
+      {breakdown_html}
+    </div>
+  </aside>
+
+  <!-- Main content -->
+  <main class="main">
+    <div class="page-title">Review history</div>
+    <div class="page-sub">All PR reviews across connected repositories</div>
+
     <table>
-        <thead>
-            <tr>
-                <th>Run ID</th>
-                <th>Repo</th>
-                <th>PR</th>
-                <th>Tech Stack</th>
-                <th>Verdict</th>
-                <th>Confidence</th>
-                <th>Status</th>
-                <th>Duration</th>
-                <th>Started</th>
-            </tr>
-        </thead>
-        <tbody>
-            {rows if rows else '<tr><td colspan="9" style="padding:24px;text-align:center;color:#64748b">No reviews logged yet. Open a PR to get started.</td></tr>'}
-        </tbody>
+      <thead>
+        <tr>
+          <th>Run</th>
+          <th>Repository</th>
+          <th>PR</th>
+          <th>Author</th>
+          <th>Branch</th>
+          <th>Stack</th>
+          <th>Verdict</th>
+          <th style="text-align:right">Conf</th>
+          <th style="text-align:center">Status</th>
+          <th style="text-align:right">Duration</th>
+          <th>Started</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows}
+      </tbody>
     </table>
+  </main>
+
+</div>
 </body>
 </html>"""
     return html
@@ -183,59 +369,89 @@ def run_detail_html(run_id: str):
     if not run:
         return HTMLResponse("<h1>Run not found</h1>", status_code=404)
 
-    logs = get_agent_logs_for_run(run_id)
+    logs  = get_agent_logs_for_run(run_id)
+    conf  = f"{round(run['confidence'] * 100)}%" if run.get("confidence") else "—"
+    color, label = VERDICT_META.get(run.get("verdict",""), ("#475569","—"))
 
     steps_html = ""
-    for log in logs:
-        output_preview = (log.get("output") or "")[:2000]
+    for i, log in enumerate(logs):
+        output  = (log.get("output") or "")[:3000]
+        status  = log.get("status","completed")
+        sc, _   = STATUS_META.get(status, ("#475569","?"))
         steps_html += f"""
-        <div style="background:#1e293b;border-radius:8px;padding:16px;margin-bottom:12px">
-            <div style="display:flex;justify-content:space-between;margin-bottom:8px">
-                <strong style="color:#f1f5f9">{log['agent_name']}</strong>
-                <span style="color:#64748b;font-size:12px">{log['task_name']}</span>
-            </div>
-            <pre style="background:#0f172a;padding:12px;border-radius:4px;font-size:12px;
-                        overflow-x:auto;white-space:pre-wrap;color:#94a3b8">{output_preview}</pre>
-        </div>"""
+    <div style="margin-bottom:12px;border:1px solid #1a2535;border-radius:8px;overflow:hidden">
+      <div style="display:flex;align-items:center;justify-content:space-between;
+                  padding:10px 14px;background:#0d1520;border-bottom:1px solid #1a2535">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="color:{sc};font-size:10px">●</span>
+          <span style="font-weight:600;color:#f1f5f9;font-size:12px">{log['agent_name']}</span>
+        </div>
+        <span style="color:#475569;font-size:11px;font-family:'JetBrains Mono',monospace">{log['task_name']}</span>
+      </div>
+      <pre style="padding:14px;font-family:'JetBrains Mono',monospace;font-size:11px;
+                  color:#94a3b8;overflow-x:auto;white-space:pre-wrap;
+                  background:#080d14;line-height:1.6;max-height:300px;overflow-y:auto">{output}</pre>
+    </div>"""
 
-    conf = f"{round(run['confidence'] * 100)}%" if run.get("confidence") else "—"
+    error_block = ""
+    if run.get("error_message"):
+        error_block = f"""
+    <div style="background:#1c0a0a;border:1px solid #7f1d1d;border-radius:8px;
+                padding:14px;margin-bottom:20px;font-size:12px;color:#fca5a5">
+      <strong>Error:</strong> {run['error_message']}
+    </div>"""
 
     html = f"""<!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Run {run_id[:8]} — PR-Pilot</title>
-    <meta charset="utf-8">
-    <style>
-        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-                background: #0f172a; color: #e5e7eb; margin: 0; padding: 24px; }}
-        h1 {{ color: #f1f5f9; }}
-        .meta {{ background: #1e293b; border-radius: 8px; padding: 16px; margin: 16px 0;
-                 display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }}
-        .meta-item span:first-child {{ color: #64748b; font-size: 12px; display: block; }}
-        a {{ color: #60a5fa; }}
-    </style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Run {run_id[:8]} — PR-Pilot</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after {{ box-sizing:border-box; margin:0; padding:0; }}
+    body {{ font-family:'Inter',system-ui,sans-serif; background:#080d14; color:#e2e8f0;
+            padding:28px; font-size:13px; line-height:1.5; }}
+    a {{ color:#3b82f6; text-decoration:none; }}
+    a:hover {{ color:#93c5fd; }}
+    .back {{ font-size:12px; color:#475569; display:inline-flex; align-items:center;
+             gap:4px; margin-bottom:20px; }}
+    .back:hover {{ color:#94a3b8; }}
+    h1 {{ font-size:18px; font-weight:700; color:#f8fafc; margin-bottom:16px;
+          font-family:'JetBrains Mono',monospace; }}
+    .meta-grid {{ display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr));
+                  gap:1px; background:#1a2535; border-radius:10px; overflow:hidden;
+                  margin-bottom:24px; }}
+    .meta-cell {{ background:#0d1520; padding:14px 16px; }}
+    .meta-key {{ font-size:10px; text-transform:uppercase; letter-spacing:0.08em;
+                 color:#475569; font-weight:600; margin-bottom:4px; }}
+    .meta-val {{ font-size:13px; font-weight:600; color:#f1f5f9; }}
+    h2 {{ font-size:12px; text-transform:uppercase; letter-spacing:0.08em;
+          color:#475569; font-weight:600; margin-bottom:14px; }}
+  </style>
 </head>
 <body>
-    <a href="/dashboard/" style="color:#64748b;text-decoration:none">← Back to dashboard</a>
-    <h1>Run {run_id[:8]}...</h1>
+  <a class="back" href="/dashboard/">← All reviews</a>
+  <h1>{run_id[:8]}...</h1>
 
-    <div class="meta">
-        <div class="meta-item"><span>Repo</span><strong>{run['repo_name']}</strong></div>
-        <div class="meta-item"><span>PR</span><strong>#{run['pr_number']}</strong></div>
-        <div class="meta-item"><span>Branch</span><strong>{run.get('pr_branch','—')}</strong></div>
-        <div class="meta-item"><span>Tech Stack</span><strong>{run.get('tech_stack','—')}</strong></div>
-        <div class="meta-item"><span>Verdict</span><strong>{run.get('verdict','—')}</strong></div>
-        <div class="meta-item"><span>Confidence</span><strong>{conf}</strong></div>
-        <div class="meta-item"><span>Status</span><strong>{run.get('status','—')}</strong></div>
-        <div class="meta-item"><span>Duration</span><strong>{run.get('duration_seconds','—')}s</strong></div>
-        <div class="meta-item"><span>Started</span><strong>{run.get('started_at','')[:19]}</strong></div>
-        <div class="meta-item"><span>Comment Posted</span><strong>{'Yes' if run.get('comment_posted') else 'No'}</strong></div>
-    </div>
+  <div class="meta-grid">
+    <div class="meta-cell"><div class="meta-key">Repository</div><div class="meta-val">{run['repo_name']}</div></div>
+    <div class="meta-cell"><div class="meta-key">Pull Request</div><div class="meta-val">#{run['pr_number']}</div></div>
+    <div class="meta-cell"><div class="meta-key">Opened by</div><div class="meta-val" style="font-family:'JetBrains Mono',monospace;font-size:12px">{run.get('pr_author','—')}</div></div>
+    <div class="meta-cell"><div class="meta-key">Branch</div><div class="meta-val" style="font-family:'JetBrains Mono',monospace;font-size:12px">{run.get('pr_branch','—')}</div></div>
+    <div class="meta-cell"><div class="meta-key">Tech Stack</div><div class="meta-val">{run.get('tech_stack','—')}</div></div>
+    <div class="meta-cell"><div class="meta-key">Verdict</div><div class="meta-val" style="color:{color}">{label}</div></div>
+    <div class="meta-cell"><div class="meta-key">Confidence</div><div class="meta-val">{conf}</div></div>
+    <div class="meta-cell"><div class="meta-key">Status</div><div class="meta-val">{run.get('status','—')}</div></div>
+    <div class="meta-cell"><div class="meta-key">Duration</div><div class="meta-val">{run.get('duration_seconds','—')}s</div></div>
+    <div class="meta-cell"><div class="meta-key">Started</div><div class="meta-val" style="font-size:12px">{(run.get('started_at','')[:19]).replace('T',' ')}</div></div>
+    <div class="meta-cell"><div class="meta-key">Comment Posted</div><div class="meta-val">{'Yes' if run.get('comment_posted') else 'No'}</div></div>
+  </div>
 
-    {"<div style='background:#7f1d1d;border-radius:8px;padding:12px;margin:12px 0'><strong>Error:</strong> " + run['error_message'] + "</div>" if run.get('error_message') else ""}
+  {error_block}
 
-    <h2 style="color:#94a3b8">Agent Trace ({len(logs)} steps)</h2>
-    {steps_html if steps_html else '<p style="color:#64748b">No agent steps logged.</p>'}
+  <h2>Agent trace — {len(logs)} steps</h2>
+  {steps_html if steps_html else '<p style="color:#334155;padding:20px 0">No agent steps recorded.</p>'}
 </body>
 </html>"""
     return html

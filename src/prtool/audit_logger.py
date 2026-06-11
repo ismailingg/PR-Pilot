@@ -53,6 +53,7 @@ def init_db() -> None:
             repo_name       TEXT    NOT NULL,
             pr_number       INTEGER NOT NULL,
             pr_branch       TEXT,
+            pr_author       TEXT,
             tech_stack      TEXT,
             verdict         TEXT,
             confidence      REAL,
@@ -80,6 +81,15 @@ def init_db() -> None:
         );
 
         CREATE INDEX IF NOT EXISTS idx_runs_repo     ON runs(repo_name);
+    """)
+    # Migration: add pr_author column to existing databases
+    try:
+        conn.execute("ALTER TABLE runs ADD COLUMN pr_author TEXT")
+        conn.commit()
+    except Exception:
+        pass  # column already exists
+    conn.executescript("""
+        SELECT 1;  -- no-op to satisfy executescript
         CREATE INDEX IF NOT EXISTS idx_runs_status   ON runs(status);
         CREATE INDEX IF NOT EXISTS idx_logs_run_id   ON agent_logs(run_id);
     """)
@@ -95,6 +105,7 @@ def log_run_started(
     repo_name: str,
     pr_number: int,
     pr_branch: str = "",
+    pr_author: str = "",
     tech_stack: str = "",
 ) -> None:
     """Call when a crew execution starts."""
@@ -102,10 +113,10 @@ def log_run_started(
     conn.execute(
         """
         INSERT OR IGNORE INTO runs
-            (run_id, repo_name, pr_number, pr_branch, tech_stack, status, started_at)
-        VALUES (?, ?, ?, ?, ?, 'started', ?)
+            (run_id, repo_name, pr_number, pr_branch, pr_author, tech_stack, status, started_at)
+        VALUES (?, ?, ?, ?, ?, ?, 'started', ?)
         """,
-        (run_id, repo_name, pr_number, pr_branch, tech_stack,
+        (run_id, repo_name, pr_number, pr_branch, pr_author, tech_stack,
          datetime.utcnow().isoformat()),
     )
     conn.commit()
