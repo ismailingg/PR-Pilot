@@ -188,6 +188,9 @@ async def github_webhook(request: Request, x_hub_signature_256: str = Header(Non
         tech_stack=tech_stack,
     )
 
+    diff_lines = len([l for l in details["diff"].splitlines() if l.startswith("+")])
+    pr_scope = "large" if diff_lines > 200 else "medium" if diff_lines > 50 else "small"
+
     # 7. Build inputs — all keys must match {brackets} in tasks.yaml
     inputs = {
         "diff":              details["diff"],
@@ -198,6 +201,8 @@ async def github_webhook(request: Request, x_hub_signature_256: str = Header(Non
         "pr_branch":         pr_branch,
         "github_token":      gh.token,
         "current_datetime":  datetime.now().strftime("%Y-%m-%d %H:%M %Z"),
+        "pr_scope":          pr_scope,
+        "diff_line_count":   diff_lines,
     }
 
     # 8. Run the crew in a thread — never block the async event loop

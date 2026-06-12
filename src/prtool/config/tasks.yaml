@@ -17,6 +17,17 @@ review_task:
     You are a Senior {tech_stack} Engineer. Review the following code diff:
     {diff}
 
+    The diff has approximately {diff_line_count} added lines (scope: {pr_scope}).
+
+    If scope is "large" (200+ lines):
+    - You MUST enumerate every new function found on a '+def ' line
+    - Group findings by file
+    - Do not summarize — list each function with its mechanical description
+    - Flag if the PR is too large to review thoroughly in one pass
+
+    If scope is "small" (<50 lines):
+    - Standard review depth is sufficient
+
     HOW TO COUNT LINE NUMBERS IN THIS DIFF:
     - The "@@ -0,0 +1,N @@" header means the new file starts at line 1.
     - Count ONLY lines beginning with '+' (new code) or ' ' (unchanged context).
@@ -163,6 +174,9 @@ decision_task:
     4. Pull mechanical descriptions from the diff_reviewer output for Positive Points.
        Do NOT use the PR description or docstring — use what the reviewer observed.
     5. For the timestamp, use: {current_datetime}
+    6. If pr_scope is "large" and you have not enumerated every function in the diff,
+       cap confidence at 0.75 and note "Large PR — partial review" in the summary.
+       Never give 90%+ confidence on a PR with 200+ changed lines.
 
     CONTENT RULES:
     - Summary must reference actual function names and say whether the goal was achieved
