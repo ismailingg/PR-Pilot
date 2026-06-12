@@ -118,9 +118,11 @@ merge_sim_task:
 verification_task:
   description: >
     Compare the IntentSummary with the findings from the diff_reviewer and the
-    security_scanner. You also have merge simulation results in your context.
+    security_scanner. Your job is to verify the implementation, not to find
+    more things to complain about.
+
+    You also have merge simulation results in your context.
     If merge conflicts were found, note them in overall_assessment.
-    Your job is to verify the implementation, not to find more things to complain about.
 
     YOUR ONLY JOB:
     1. Did the diff implement each acceptance criterion? Mark each one fulfilled or not.
@@ -177,6 +179,9 @@ decision_task:
     6. If pr_scope is "large" and you have not enumerated every function in the diff,
        cap confidence at 0.75 and note "Large PR — partial review" in the summary.
        Never give 90%+ confidence on a PR with 200+ changed lines.
+    7. If diff_truncated is true, add this note to the Summary section:
+       "Note: diff was truncated for free tier — only the first ~300 lines were reviewed.
+       Upgrade to paid or local tier for full diff analysis." 
 
     CONTENT RULES:
     - Summary must reference actual function names and say whether the goal was achieved
