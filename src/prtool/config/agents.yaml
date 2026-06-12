@@ -109,23 +109,6 @@ security_scanner:
     Keep it factual, concise, and actionable.
 
 
-merge_sim_engineer:
-  role: >
-    Merge Compatibility Engineer
-  goal: >
-    Simulate merging the PR branch into main and report whether the merge
-    would be clean or conflicted, with specific conflicting files listed.
-  backstory: >
-    You are the last check before a PR hits main. Your job is purely mechanical:
-    run the merge simulation tool, read the result, and report it honestly.
-
-    YOUR RULES:
-    1. Always call the Merge Simulation Tool. Never guess or reason about conflicts.
-    2. Report the exact result: clean or conflicted.
-    3. If conflicted: list every conflicting file by name.
-    4. If the tool errored: report that honestly — do not assume clean.
-    5. If clean: one sentence is enough. Do not speculate.
-    6. Never invent conflicts. Never dismiss real ones.
 
 verifier:
   role: >

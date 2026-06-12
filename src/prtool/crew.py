@@ -120,16 +120,6 @@ class PrToolCrew():
             verbose=True,
         )
 
-    @agent
-    def merge_sim_engineer(self) -> Agent:
-        return Agent(
-            config=self.agents_config['merge_sim_engineer'],
-            llm=self._primary,
-            tools=[MergeSimTool()],
-            max_iter=2,
-            max_retry_limit=1,
-            verbose=True,
-        )
 
     @agent
     def verifier(self) -> Agent:
@@ -176,13 +166,6 @@ class PrToolCrew():
             verbose=True,
         )
 
-    @task
-    def merge_sim_task(self) -> Task:
-        return Task(
-            config=self.tasks_config['merge_sim_task'],
-            agent=self.merge_sim_engineer(),
-            verbose=True,
-        )
 
     @task
     def verification_task(self) -> Task:
@@ -193,7 +176,6 @@ class PrToolCrew():
                 self.extraction_task(),
                 self.review_task(),
                 self.security_scan_task(),
-                self.merge_sim_task(),
             ],
             output_pydantic=CodeReviewReport,
         )
@@ -206,7 +188,6 @@ class PrToolCrew():
             context=[
                 self.verification_task(),
                 self.security_scan_task(),
-                self.merge_sim_task(),
             ],
             output_pydantic=ReviewVerdict,
         )
@@ -223,7 +204,6 @@ class PrToolCrew():
                 self.extraction_task(),
                 self.review_task(),
                 self.security_scan_task(),
-                self.merge_sim_task(),
                 self.verification_task(),
                 self.decision_task(),
             ],

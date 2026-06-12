@@ -85,35 +85,7 @@ security_scan_task:
     - summary: one clear sentence — if Semgrep found nothing, say so explicitly
   agent: security_scanner
 
-merge_sim_task:
-  description: >
-    Simulate merging the PR branch into the base branch.
 
-    You have these inputs:
-    - repo_url: https://github.com/{repo_name}
-    - pr_branch: {pr_branch}
-    - github_token: {github_token}
-    - base_branch: main
-
-    Steps:
-    1. Call the Merge Simulation Tool with these exact arguments:
-       repo_url: "https://github.com/{repo_name}"
-       pr_branch: "{pr_branch}"
-       github_token: "{github_token}"
-       base_branch: "main"
-    2. Read the result carefully.
-    3. If mergeable is true: report clean merge in one sentence.
-    4. If mergeable is false: list every file in conflicting_files explicitly.
-    5. If status is "error": report the reason — do not assume clean.
-    6. Never invent or dismiss conflicts. Report exactly what the tool returned.
-  expected_output: >
-    A structured merge simulation report containing:
-    - status: "completed" or "error"
-    - mergeable: true or false
-    - conflicts: number of conflicting files (0 if clean)
-    - conflicting_files: list of filenames with conflicts (empty list if clean)
-    - summary: one sentence describing the result
-  agent: merge_sim_engineer
 
 verification_task:
   description: >
@@ -121,8 +93,6 @@ verification_task:
     security_scanner. Your job is to verify the implementation, not to find
     more things to complain about.
 
-    You also have merge simulation results in your context.
-    If merge conflicts were found, note them in overall_assessment.
 
     YOUR ONLY JOB:
     1. Did the diff implement each acceptance criterion? Mark each one fulfilled or not.
