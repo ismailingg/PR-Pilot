@@ -1,0 +1,75 @@
+# =============================================================================
+# PR-Pilot — Docker Compose
+#
+# Usage:
+#   Free tier (Groq + OpenRouter):  docker compose up
+#   Local tier (Ollama):            docker compose --profile local up
+#   Paid tier:                      set LLM_TIER=paid in .env, docker compose up
+#
+# First time setup:
+#   1. cp .env.example .env  and fill in your values
+#   2. Place your GitHub App private key at secrets/github.pem
+#   3. docker compose up --build
+# =============================================================================
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # PR-Pilot FastAPI bot
+  # ---------------------------------------------------------------------------
+  prpilot:
+    build:
+      context: .
+      dockerfile: Dockerfile.app
+    container_name: prpilot
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      # DB inside a named volume so it survives container restarts
+      PRPILOT_DB_PATH: /app/data/prpilot_audit.db
+      # Override Ollama base URL to point at the ollama service
+      OLLAMA_BASE_URL: http://ollama:11434
+    volumes:
+      # Persist SQLite database
+      - prpilot_data:/app/data
+      # Mount secrets folder (GitHub App private key)
+      - ./secrets:/app/secrets:ro
+    depends_on:
+      - ollama
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # ---------------------------------------------------------------------------
+  # Ollama — local LLM server (used when LLM_TIER=local)
+  # Runs always so the container is available if someone switches tier.
+  # Pull your model after first start: docker exec prpilot-ollama ollama pull llama3.1
+  # ---------------------------------------------------------------------------
+  ollama:
+    image: ollama/ollama:latest
+    container_name: prpilot-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+    # GPU support — uncomment if you have an NVIDIA GPU
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+volumes:
+  prpilot_data:
+    driver: local
+  ollama_models:
+    driver: local
