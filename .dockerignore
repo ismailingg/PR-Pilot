@@ -1,0 +1,35 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info
+.venv
+venv
+env
+
+# Development
+.env
+*.env.local
+.pytest_cache
+.ruff_cache
+
+# Data — managed by Docker volumes
+*.db
+prpilot_audit.db
+
+# Secrets — mounted as volume at runtime, never baked into image
+secrets/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode
+.idea
