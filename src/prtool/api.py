@@ -21,6 +21,24 @@ from prtool.audit_logger import (
 )
 
 load_dotenv()
+
+
+BANNER = (
+    "\033[36m\n"
+    r"  ____  ____     ____  _ __      __ " + "\n"
+    r" / __ \/ __ \   / __ \(_) /___  / /_" + "\n"
+    r"/ /_/ / /_/ /  / /_/ / / / __ \/ __/" + "\n"
+    r"/ ____/ _, _/  / ____/ / / /_/ / /_  " + "\n"
+    r"/_/   /_/ |_|  /_/   /_/_/\____/\__/  " + "\n"
+    "\033[0m\033[1m\n"
+    "PR Pilot\033[0m\n"
+    "\033[90m=====================================================\033[0m\n"
+    "\033[32m  >> Your Virtual Senior Engineer Is On Duty\033[0m\n"
+    "\033[90m=====================================================\033[0m\n"
+)
+
+
+print(BANNER)
 app = FastAPI()
 
 # Mount dashboard
@@ -28,6 +46,16 @@ app.include_router(dashboard_router)
 
 # Initialise SQLite tables once at startup
 init_db()
+
+# ---------------------------------------------------------------------------
+# Concurrency control — limits simultaneous crew executions per tier
+# Free tier:  1 at a time — two concurrent reviews would exceed Groq's 12k TPM
+# Paid tier:  3 at a time — paid APIs have much higher rate limits
+# Local tier: 1 at a time — CPU inference can't handle parallel workloads
+# ---------------------------------------------------------------------------
+_LLM_TIER = os.getenv("LLM_TIER", "free").lower()
+_MAX_CONCURRENT = 3 if _LLM_TIER == "paid" else 1
+_review_semaphore = asyncio.Semaphore(_MAX_CONCURRENT)
 
 # ---------------------------------------------------------------------------
 # Diff size limits per tier
@@ -49,7 +77,7 @@ def _truncate_diff_for_tier(diff: str, tier: str) -> tuple[str, bool]:
         last_newline = truncated.rfind("\n")
         if last_newline > 0:
             truncated = truncated[:last_newline]
-        print(f"Free tier: diff truncated from {len(diff)} to {len(truncated)} chars")
+        print(f"  Free tier: diff truncated from {len(diff)} to {len(truncated)} chars")
         return truncated, True
     return diff, False
 
@@ -173,7 +201,7 @@ async def github_webhook(request: Request, x_hub_signature_256: str = Header(Non
     action = data.get("action")
 
     # Trigger only on PR open or new commits pushed
-    if action not in ["opened", "synchronize", "reopened"]:
+    if action not in ["opened", "synchronize"]:
         return {"status": "ignored", "reason": f"action '{action}' not handled"}
 
     repo_name  = data["repository"]["full_name"]
@@ -237,10 +265,13 @@ async def github_webhook(request: Request, x_hub_signature_256: str = Header(Non
     }
 
     # 9. Run the crew in a thread — never block the async event loop
+    # Semaphore limits concurrent reviews based on tier to avoid rate limit errors
     result = None
     try:
-        crew_instance = PrToolCrew().crew()
-        result = await asyncio.to_thread(crew_instance.kickoff, inputs=inputs)
+        async with _review_semaphore:
+            print(f" Semaphore acquired (max {_MAX_CONCURRENT} concurrent) — starting crew")
+            crew_instance = PrToolCrew().crew()
+            result = await asyncio.to_thread(crew_instance.kickoff, inputs=inputs)
     except Exception as e:
         duration = round(time.time() - start_time, 1)
         print(f" Crew failed: {e}")
@@ -282,7 +313,7 @@ async def github_webhook(request: Request, x_hub_signature_256: str = Header(Non
             gh.post_pr_comment(
                 repo_name, pr_num,
                 "### PR-Pilot AI Audit\n\nReview completed but produced no output. "
-                "Please push a new commit or reopen to retry."
+                "Please push a new commit to retry."
             )
 
         # Extract quality/security scores and log each agent step
