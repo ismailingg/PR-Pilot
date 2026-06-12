@@ -49,7 +49,7 @@ def _truncate_diff_for_tier(diff: str, tier: str) -> tuple[str, bool]:
         last_newline = truncated.rfind("\n")
         if last_newline > 0:
             truncated = truncated[:last_newline]
-        print(f"⚠️  Free tier: diff truncated from {len(diff)} to {len(truncated)} chars")
+        print(f"Free tier: diff truncated from {len(diff)} to {len(truncated)} chars")
         return truncated, True
     return diff, False
 
@@ -150,7 +150,7 @@ def _post_fallback_comment(gh, repo_name: str, pr_num: int, error: str, result=N
     try:
         gh.post_pr_comment(repo_name, pr_num, comment)
     except Exception as post_err:
-        print(f"❌ Could not post fallback comment: {post_err}")
+        print(f" Could not post fallback comment: {post_err}")
 
 
 @app.post("/webhook")
@@ -186,7 +186,7 @@ async def github_webhook(request: Request, x_hub_signature_256: str = Header(Non
     try:
         details = gh.get_pr_details(repo_name, pr_num)
     except RuntimeError as e:
-        print(f"❌ Could not fetch PR details: {e}")
+        print(f" Could not fetch PR details: {e}")
         gh.post_pr_comment(
             repo_name, pr_num,
             f"### PR-Pilot AI Audit\n\n"
@@ -200,7 +200,7 @@ async def github_webhook(request: Request, x_hub_signature_256: str = Header(Non
     run_id     = str(uuid.uuid4())
     start_time = time.time()
 
-    print(f"🚀 [AUDIT STARTING] PR #{pr_num} on {repo_name} | run_id={run_id}")
+    print(f" [AUDIT STARTING] PR #{pr_num} on {repo_name} | run_id={run_id}")
 
     # 6. Log run start to SQLite
     log_run_started(
@@ -243,13 +243,13 @@ async def github_webhook(request: Request, x_hub_signature_256: str = Header(Non
         result = await asyncio.to_thread(crew_instance.kickoff, inputs=inputs)
     except Exception as e:
         duration = round(time.time() - start_time, 1)
-        print(f"❌ Crew failed: {e}")
+        print(f" Crew failed: {e}")
         log_run_failed(run_id, str(e), duration)
         _post_fallback_comment(gh, repo_name, pr_num, str(e), result)
         return {"status": "error", "reason": str(e)}
 
     duration = round(time.time() - start_time, 1)
-    print(f"\n✅ [AUDIT COMPLETE] duration={duration}s")
+    print(f"\n [AUDIT COMPLETE] duration={duration}s")
 
     # 10. Post the verdict comment back to GitHub
     comment_posted = False
@@ -261,7 +261,7 @@ async def github_webhook(request: Request, x_hub_signature_256: str = Header(Non
     try:
         verdict = result.pydantic
         if verdict and verdict.comment_draft:
-            print("📝 Posting verdict to GitHub...")
+            print(" Posting verdict to GitHub...")
             final_comment = f"### PR-Pilot AI Audit\n\n{verdict.comment_draft}"
             gh.post_pr_comment(repo_name, pr_num, final_comment)
             comment_posted = True
@@ -272,7 +272,7 @@ async def github_webhook(request: Request, x_hub_signature_256: str = Header(Non
             )
             confidence = float(verdict.confidence)
         elif result.raw:
-            print("⚠️  No structured verdict — posting raw output.")
+            print("  No structured verdict — posting raw output.")
             gh.post_pr_comment(
                 repo_name, pr_num,
                 f"### PR-Pilot AI Audit\n\n{result.raw}"
@@ -282,7 +282,7 @@ async def github_webhook(request: Request, x_hub_signature_256: str = Header(Non
             gh.post_pr_comment(
                 repo_name, pr_num,
                 "### PR-Pilot AI Audit\n\nReview completed but produced no output. "
-                "Please push a new commit to retry."
+                "Please push a new commit or reopen to retry."
             )
 
         # Extract quality/security scores and log each agent step
@@ -304,10 +304,10 @@ async def github_webhook(request: Request, x_hub_signature_256: str = Header(Non
                     output=getattr(task_out, "raw", "") or "",
                 )
         except Exception as log_err:
-            print(f"⚠️  Could not log agent steps: {log_err}")
+            print(f"  Could not log agent steps: {log_err}")
 
     except Exception as e:
-        print(f"❌ Error posting comment: {e}")
+        print(f" Error posting comment: {e}")
         _post_fallback_comment(gh, repo_name, pr_num, str(e), result)
 
     # 11. Log run completion

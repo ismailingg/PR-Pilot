@@ -113,7 +113,7 @@ class PrToolCrew():
     def security_scanner(self) -> Agent:
         return Agent(
             config=self.agents_config['security_scanner'],
-            llm=self._primary,   # always on secondary — avoids 413 on Groq free tier
+            llm=self._secondary,   # always on secondary — avoids 413 on Groq free tier
             tools=[SemgrepScanTool()],
             max_iter=2,
             max_retry_limit=1,
