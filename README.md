@@ -13,11 +13,52 @@ PR Pilot
 
 # PR-Pilot
 
-An automated GitHub PR review bot powered by a multi-agent AI pipeline. PR-Pilot reviews your pull requests and posts structured feedback directly as GitHub comments — covering code quality, security findings, and merge compatibility.
+PR-Pilot is a self-hosted AI code review agent that integrates with GitHub and automatically reviews pull requests — flagging real bugs with line citations, running Semgrep security scans, detecting merge conflicts before they happen, and posting structured feedback with a confidence score directly to your PR. Runs entirely on your infrastructure. On the local tier, no code ever leaves your machine.
 
-![Dashboard](https://img.shields.io/badge/dashboard-localhost%3A8000%2Fdashboard-blue)
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
+![Powered by CrewAI](https://img.shields.io/badge/powered%20by-CrewAI-purple)
+
+---
+
+## Sample Review Comment
+
+```
+### PR-Pilot AI Review
+
+**Verdict**: Strongly Recommended to Merge
+**Confidence**: 93%
+
+#### Summary
+The PR adds unregister_api_key() which removes a service's API key registration
+from the module-level dict. The implementation is focused and achieves the stated
+goal with no side effects on existing functionality.
+
+#### Key Findings
+
+**Positive Points**
+- unregister_api_key(): checks service_name exists in api_keys via `in` guard
+  before deletion — prevents KeyError on unknown services, returns False correctly
+- Consistent with existing register_api_key() pattern in the same module
+
+**Suggestions for Improvement**
+None — implementation is clean and focused.
+
+#### Security & Risk Assessment
+- Security scan: Clean (no issues found)
+- Merge simulation: Clean — no conflicts with main
+- Potential side effects: None detected
+
+#### Recommendation
+**Ready to merge.**
+
+---
+**PR-Pilot Analysis Details** *(expand for details)*
+- Intent match: 100% (all criteria met)
+- Code quality score: 9.0/10
+- Security score: 9.0/10
+- Generated at: 2026-06-12 10:36
+```
 
 ---
 
@@ -26,29 +67,62 @@ An automated GitHub PR review bot powered by a multi-agent AI pipeline. PR-Pilot
 When a PR is opened or updated on a connected repository, PR-Pilot:
 
 1. Fetches the diff and linked issue from GitHub
-2. Extracts the intent and acceptance criteria
-3. Reviews the code diff mechanically — not just the description
-4. Runs Semgrep static analysis for security issues
-5. Simulates a git merge to detect conflicts before they happen
-6. Posts a structured review comment with a verdict, confidence score, and findings
-7. Logs every review to a local SQLite database viewable on a dashboard
+2. Extracts the intent and acceptance criteria from the PR description
+3. Reviews the code diff mechanically — not just the description, citing actual lines
+4. Runs Semgrep static analysis for real security vulnerabilities
+5. Simulates a git merge to detect conflicts before they reach main
+6. Posts a structured review comment with verdict, confidence score, and findings
+7. Logs every review to a local SQLite database viewable on a built-in dashboard
+
+---
+
+## Agent Pipeline
+
+```
+PR opened / updated
+        ↓
+Intent Extractor    — reads PR description and linked issue, extracts acceptance criteria
+        ↓
+Diff Reviewer       — reviews changed code mechanically, line by line, never paraphrases
+        ↓
+Security Scanner    — runs Semgrep SAST, maps findings to OWASP categories
+        ↓
+Merge Sim Engineer  — simulates git merge --no-commit, detects file conflicts
+        ↓
+Verifier            — cross-references findings against intent, filters false positives
+        ↓
+Decider             — writes the final GitHub comment with verdict and confidence score
+        ↓
+GitHub PR Comment + Audit Log
+```
+
+---
+
+## LLM Tiers
+
+PR-Pilot supports three tiers. Choose based on your privacy and cost requirements:
+
+| Tier | Models | Cost | Diff limit | Privacy |
+|---|---|---|---|---|
+| `free` | Groq + OpenRouter | Free | ~300 lines | Code sent to API |
+| `paid` | Anthropic / OpenAI / Gemini | Pay per use | Unlimited | Code sent to API |
+| `local` | Ollama (any model) | Free | Unlimited | Code never leaves your machine |
 
 ---
 
 ## Prerequisites
 
-Install these before anything else:
+| Tool | Link |
+|---|---|
+| Docker Desktop | https://www.docker.com/products/docker-desktop |
+| Git | https://git-scm.com |
+| ngrok | https://ngrok.com/download |
 
-| Tool | Version | Link |
-|---|---|---|
-| Docker Desktop | Latest | https://www.docker.com/products/docker-desktop |
-| Git | Any | https://git-scm.com |
-| ngrok | Latest | https://ngrok.com/download |
-| Python | 3.10–3.13 | https://python.org (only needed for local dev without Docker) |
+Python 3.10+ is only needed if running without Docker.
 
 ---
 
-## Quick Start (Docker — Recommended)
+## Quick Start (Docker)
 
 ### 1. Clone the repo
 
@@ -57,48 +131,48 @@ git clone https://github.com/your-username/pr-pilot.git
 cd pr-pilot
 ```
 
-### 2. Create your GitHub App
+### 2. Create a GitHub App
 
 1. Go to **GitHub → Settings → Developer Settings → GitHub Apps → New GitHub App**
 2. Fill in:
    - **App name**: PR-Pilot (or anything you like)
    - **Homepage URL**: `http://localhost:8000`
-   - **Webhook URL**: leave blank for now — you'll fill this after ngrok starts
-   - **Webhook secret**: generate a random string, e.g. `openssl rand -hex 32` — save it
-3. Under **Permissions → Repository permissions**, set:
+   - **Webhook URL**: leave blank for now
+   - **Webhook secret**: generate a random string and save it
+     ```bash
+     # Mac/Linux
+     openssl rand -hex 32
+     # Windows PowerShell
+     [System.Web.Security.Membership]::GeneratePassword(32,0)
+     ```
+3. Under **Permissions → Repository permissions** set:
    - Contents: Read
    - Issues: Read
    - Pull requests: Read and write
-4. Under **Subscribe to events**, check: **Pull request**
+4. Under **Subscribe to events** check: **Pull request**
 5. Click **Create GitHub App**
-6. Note your **App ID** (shown at the top of the app settings page)
-7. Scroll to **Private keys** → **Generate a private key** → download the `.pem` file
-8. Go to **Install App** → install it on your repo
+6. Note your **App ID** at the top of the settings page
+7. Scroll to **Private keys → Generate a private key** — download the `.pem` file
+8. Click **Install App** and install it on your target repository
 
-### 3. Set up credentials
+### 3. Configure credentials
 
 ```bash
-# Copy the example env file
 cp .env.example .env
-
-# Create secrets folder and move your private key there
 mkdir -p secrets
-mv ~/Downloads/your-app-name.pem secrets/github.pem
+mv ~/Downloads/your-app.private-key.pem secrets/github.pem
 ```
 
-Edit `.env` and fill in your values:
+Edit `.env`:
 
 ```env
-# LLM tier — choose one
 LLM_TIER=free
 
-# Free tier keys (get at console.groq.com and openrouter.ai)
 GROQ_API_KEY=your_groq_key
 GROQ_MODEL=llama-3.3-70b-versatile
 OPENROUTER_API_KEY=your_openrouter_key
 OPENROUTER_MODEL=openai/gpt-4o-mini
 
-# GitHub App credentials
 GITHUB_APP_ID=123456
 GITHUB_PRIVATE_KEY_PATH=secrets/github.pem
 GITHUB_INSTALLATION_ID=12345678
@@ -106,31 +180,13 @@ GITHUB_WEBHOOK_SECRET=your_webhook_secret
 ```
 
 **Finding your Installation ID:**
-Go to `https://github.com/settings/installations` — click Configure next to your app. The number in the URL is your installation ID.
+Go to `https://github.com/settings/installations` → click Configure next to your app → the number in the URL is your installation ID.
 
-### 4. Start ngrok
+**Free API keys:**
+- Groq: https://console.groq.com
+- OpenRouter: https://openrouter.ai
 
-In a terminal, start the tunnel:
-
-```bash
-ngrok http 8000
-```
-
-You'll see a line like:
-
-```
-Forwarding  https://abc123.ngrok-free.app -> http://localhost:8000
-```
-
-Copy the `https://` URL. Keep this terminal open.
-
-### 5. Update your GitHub App webhook URL
-
-1. Go back to your GitHub App settings: `https://github.com/settings/apps/your-app-name`
-2. Set **Webhook URL** to: `https://abc123.ngrok-free.app/webhook`
-3. Click **Save changes**
-
-### 6. Start PR-Pilot
+### 4. Start PR-Pilot
 
 ```bash
 docker compose up --build
@@ -142,35 +198,51 @@ prpilot  | INFO:     Application startup complete.
 prpilot  | INFO:     Uvicorn running on http://0.0.0.0:8000
 ```
 
-### 7. Test it
+### 5. Start ngrok
 
-Open a pull request on your connected repository. Within a minute you should see:
-- A review comment posted to the PR on GitHub
-- The review appearing on the dashboard at `http://localhost:8000/dashboard/`
+In a separate terminal:
+
+```bash
+ngrok http 8000
+```
+
+You'll see:
+```
+Forwarding  https://abc123.ngrok-free.app -> http://localhost:8000
+```
+
+> **Important:** ngrok free plan generates a new URL every time you restart it.
+> You must update your GitHub App webhook URL each time.
+
+### 6. Connect GitHub App to your server
+
+1. Go to `https://github.com/settings/apps/your-app-name`
+2. Set **Webhook URL** to: `https://abc123.ngrok-free.app/webhook`
+3. Click **Save changes**
+
+### 7. Open a PR and test
+
+Open a pull request on your connected repository. Within 60–120 seconds you should see a review comment posted automatically.
+
+Check the dashboard at `http://localhost:8000/dashboard/` to see the review logged.
 
 ---
 
-## LLM Tiers
+## LLM Tier Configuration
 
-PR-Pilot supports three tiers. Set `LLM_TIER` in your `.env`:
-
-### Free Tier (default)
-Uses Groq + OpenRouter free API keys. No cost.
+### Free Tier
 
 ```env
 LLM_TIER=free
-GROQ_API_KEY=your_groq_key
-OPENROUTER_API_KEY=your_openrouter_key
+GROQ_API_KEY=your_key
+OPENROUTER_API_KEY=your_key
 ```
 
-Get free keys:
-- Groq: https://console.groq.com
-- OpenRouter: https://openrouter.ai
-
-**Limitation:** Diffs larger than ~300 lines are truncated due to Groq's free tier token limits. The review comment will note when this happens.
+Large PRs (200+ lines) are automatically truncated for the security scanner to stay within Groq's free tier token limits. The review comment will note when this happens. All other agents receive the full diff.
 
 ### Paid Tier
-Uses a single paid API key. Full diff analysis, no truncation.
+
+Full diff, no truncation, up to 3 concurrent reviews.
 
 ```env
 LLM_TIER=paid
@@ -181,45 +253,43 @@ PAID_BASE_URL=https://api.anthropic.com/v1
 
 Supported providers:
 
-| Provider | Model example | Base URL |
+| Provider | Model | Base URL |
 |---|---|---|
 | Anthropic | `claude-3-5-haiku-20241022` | `https://api.anthropic.com/v1` |
 | OpenAI | `gpt-4o-mini` | `https://api.openai.com/v1` |
-| Google Gemini | `gemini-1.5-flash` | `https://generativelanguage.googleapis.com/v1beta` |
+| Gemini | `gemini-1.5-flash` | `https://generativelanguage.googleapis.com/v1beta` |
 
-### Local Tier (fully private)
-Uses Ollama running on your machine. Your code never leaves your network.
+### Local Tier
+
+Your code never leaves your machine. Requires Ollama.
 
 ```env
 LLM_TIER=local
 OLLAMA_MODEL=ollama/llama3.1
 ```
 
-Start with Ollama included:
+Start with Ollama:
 
 ```bash
 docker compose --profile local up --build
 ```
 
-Then pull your model (first time only):
+Pull your model (first time only):
 
 ```bash
 docker exec prpilot-ollama ollama pull llama3.1
 ```
 
-**Note:** Local tier runs on CPU by default. Reviews will take 3–10 minutes depending on your hardware. Uncomment the GPU section in `docker-compose.yml` if you have an NVIDIA GPU.
+> **Note:** Local tier runs on CPU by default. Reviews take 3–10 minutes.
+> Uncomment the GPU section in `docker-compose.yml` for NVIDIA GPU acceleration.
 
 ---
 
 ## Dashboard
 
-Visit `http://localhost:8000/dashboard/` to see all review history.
+Visit `http://localhost:8000/dashboard/` after running your first review.
 
-Features:
-- Total reviews, completed, failed, average confidence
-- Verdict breakdown (Merge / Suggestions / Block)
-- Per-review: repo, PR number, author, branch, tech stack, verdict, confidence, status, duration
-- Click any run ID to see the full agent trace — what each agent said and why
+Shows per-review: repository, PR number, who opened it, branch, tech stack detected, verdict, confidence score, status, and duration. Click any run ID to see the full agent trace — every agent's reasoning, what Semgrep returned, what the verifier filtered.
 
 ---
 
@@ -228,103 +298,92 @@ Features:
 ```
 pr-pilot/
 ├── src/prtool/
-│   ├── api.py              — FastAPI webhook handler
-│   ├── crew.py             — CrewAI agent pipeline
-│   ├── schemas.py          — Pydantic models
-│   ├── audit_logger.py     — SQLite logging
-│   ├── dashboard.py        — Dashboard routes and HTML
+│   ├── api.py                 — FastAPI webhook handler, concurrency control
+│   ├── crew.py                — CrewAI 6-agent pipeline
+│   ├── schemas.py             — Pydantic models with graceful coercion
+│   ├── audit_logger.py        — SQLite audit logging
+│   ├── dashboard.py           — Dashboard HTML + JSON API routes
 │   ├── config/
-│   │   ├── agents.yaml     — Agent definitions and prompts
-│   │   └── tasks.yaml      — Task definitions
+│   │   ├── agents.yaml        — Agent roles, goals, and anti-hallucination rules
+│   │   └── tasks.yaml         — Task descriptions and expected outputs
 │   ├── tools/
-│   │   ├── semgrep_tool.py — Semgrep SAST wrapper
-│   │   └── merge_sim_tool.py — Git merge simulation
+│   │   ├── semgrep_tool.py    — Semgrep SAST wrapper (UTF-8 safe, Windows compatible)
+│   │   └── merge_sim_tool.py  — Git merge simulation tool
 │   └── utils/
-│       └── github_manager.py — GitHub API client
-├── secrets/                — GitHub App private key (gitignored)
-├── Dockerfile.app          — FastAPI app container
-├── docker-compose.yml      — Full stack definition
-├── .env.example            — Environment variable template
-└── pyproject.toml          — Python project config
+│       └── github_manager.py  — GitHub App auth + PR data fetching
+├── secrets/                   — GitHub App private key (gitignored)
+├── Dockerfile.app             — FastAPI app container
+├── docker-compose.yml         — Full stack (bot + Ollama optional)
+├── .env.example               — Environment variable template
+└── pyproject.toml             — Python project config (crewai, fastapi, pygithub)
 ```
 
 ---
 
-## Running Without Docker (Local Development)
+## Running Without Docker
 
 ```bash
-# Install uv
-pip install uv
+# Create and activate virtual environment
+python -m venv .venv
+source .venv/bin/activate      # Mac/Linux
+.venv\Scripts\activate         # Windows
 
 # Install dependencies
+pip install uv
 uv sync
+
+# Install semgrep (required for security scanning)
+pip install semgrep
 
 # Start the server
 uvicorn prtool.api:app --reload --port 8000
 ```
 
-Make sure `semgrep` is also installed:
-
-```bash
-pip install semgrep
-```
-
-And `git` is available on your PATH for merge simulation.
+Ensure `git` is on your PATH — required for merge simulation.
 
 ---
 
 ## Common Issues
 
 **Webhook not triggering**
-- Check ngrok is running and the URL in your GitHub App settings matches
-- ngrok free plan generates a new URL every restart — update GitHub App settings each time
-- Check Docker logs: `docker compose logs -f prpilot`
+- Confirm ngrok is running and the forwarding URL in GitHub App settings ends with `/webhook`
+- ngrok free plan gives a new URL on every restart — always update GitHub App settings after restarting ngrok
+- Check logs: `docker compose logs -f prpilot`
 
-**401 Bad credentials**
-- Your GitHub App private key path in `.env` is wrong
-- The private key file has been regenerated on GitHub — download a new one
+**401 Bad credentials on startup**
+- The `GITHUB_PRIVATE_KEY_PATH` in `.env` doesn't match where your `.pem` file actually is
+- The key was regenerated on GitHub — download the new one and replace `secrets/github.pem`
 
-**413 Request too large (free tier)**
-- Normal for large PRs on free tier — diff is automatically truncated
-- Switch to `LLM_TIER=paid` for full diff analysis
+**413 Request too large**
+- Expected on free tier for large PRs — diff is automatically truncated
+- Switch to `LLM_TIER=paid` for unlimited diff size
+
+**Review comment says "partial review" on large PRs**
+- The diff exceeded the free tier limit and was truncated
+- The bot is being honest — upgrade tier for full analysis
 
 **Dashboard shows 0 reviews after switching to Docker**
-- Docker uses a separate database volume from your local `prpilot_audit.db`
-- To use your existing data, add this to `docker-compose.yml` under `prpilot` volumes:
+- Docker uses an internal volume for the database, separate from your local `prpilot_audit.db`
+- To keep existing data, mount your local file in `docker-compose.yml`:
   ```yaml
-  - ./prpilot_audit.db:/app/data/prpilot_audit.db
+  volumes:
+    - ./prpilot_audit.db:/app/data/prpilot_audit.db
+    - ./secrets:/app/secrets:ro
   ```
 
 **Semgrep Unicode error on Windows**
-- Fixed in the current version — `semgrep_tool.py` uses `encoding="utf-8"` explicitly
-
----
-
-## Agent Pipeline
-
-```
-PR opened/updated
-      ↓
-Intent Extractor   — reads PR description and linked issue, extracts acceptance criteria
-      ↓
-Diff Reviewer      — reviews changed code mechanically, line by line
-      ↓
-Security Scanner   — runs Semgrep SAST, interprets findings
-      ↓
-Merge Sim Engineer — simulates git merge, detects conflicts
-      ↓
-Verifier           — cross-references findings against intent, filters false positives
-      ↓
-Decider            — writes the final GitHub comment with verdict and confidence score
-      ↓
-GitHub PR Comment
-```
+- Already fixed — `semgrep_tool.py` forces `encoding="utf-8"` on subprocess output
 
 ---
 
 ## Contributing
 
-Issues and PRs welcome. The prompts in `agents.yaml` and `tasks.yaml` are the most impactful place to improve review quality.
+Contributions welcome. The highest-impact areas:
+
+- **Prompt improvements** — `agents.yaml` and `tasks.yaml` are where review quality lives. Better mechanical description rules, tighter anti-hallucination constraints, and improved verdict calibration all make a real difference.
+- **Language/framework detection** — `_detect_tech_stack()` in `api.py` uses string matching. More framework patterns (Laravel, Spring Boot, FastAPI, etc.) improve the context the diff reviewer gets.
+- **New tool integrations** — the agent pipeline is modular. A Bandit tool, a dependency audit tool, or a test coverage tool can be added as a new CrewAI tool without touching existing agents.
+- **Dashboard improvements** — the dashboard is plain HTML/CSS in `dashboard.py`. PR filtering, search, and trend charts would be useful additions.
 
 ---
 
