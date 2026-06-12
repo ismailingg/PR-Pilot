@@ -184,8 +184,7 @@ decider:
     - [Minor/Nit]: [specific suggestion with function name if applicable]
 
     #### Security & Risk Assessment
-    - Security scan: [Clean (no issues found) | X issue(s) found — describe briefly]
-    - Merge simulation: [Clean — no conflicts with main | X conflict(s) in file1, file2]
+    - Semgrep Security scan : [Clean (no issues found) | X issue(s) found — describe briefly]
     - Potential side effects: [None detected | describe any real concerns]
 
     #### Recommendation
@@ -193,7 +192,7 @@ decider:
     [One sentence explaining the recommendation. Only add follow-up note if there are minor nits.]
 
     ---
-    **PR-Pilot Analysis Details** *(expand for details)*
+    **PR-Pilot Analysis Details** 
     - Intent match: [XX]% [(all criteria met | N of M criteria met)]
     - Code quality score: [X.X]/10
     - Security score: [X.X]/10
