@@ -4,7 +4,8 @@
 # Usage:
 #   Free tier (Groq + OpenRouter):  docker compose up
 #   Local tier (Ollama):            docker compose --profile local up
-#   Paid tier:                      set LLM_TIER=paid in .env, docker compose up
+#   Dev mode (with ngrok tunnel):   docker compose --profile dev up
+#   All together:                   docker compose --profile local --profile dev up
 #
 # First time setup:
 #   1. cp .env.example .env  and fill in your values
@@ -28,17 +29,11 @@ services:
     env_file:
       - .env
     environment:
-      # DB inside a named volume so it survives container restarts
       PRPILOT_DB_PATH: /app/data/prpilot_audit.db
-      # Override Ollama base URL to point at the ollama service
       OLLAMA_BASE_URL: http://ollama:11434
     volumes:
-      # Persist SQLite database
       - prpilot_data:/app/data
-      # Mount secrets folder (GitHub App private key)
       - ./secrets:/app/secrets:ro
-    depends_on:
-      - ollama
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/"]
       interval: 30s
@@ -47,13 +42,42 @@ services:
       start_period: 15s
 
   # ---------------------------------------------------------------------------
+  # ngrok — public HTTPS tunnel for local development
+  # Profile: dev (only starts with --profile dev)
+  #
+  # Requires NGROK_AUTHTOKEN in your .env
+  # Get a free token at: https://dashboard.ngrok.com/get-started/your-authtoken
+  #
+  # After starting, check the tunnel URL:
+  #   docker logs prpilot-ngrok
+  # Then set your GitHub App webhook URL to:
+  #   https://<your-ngrok-url>/webhook
+  # ---------------------------------------------------------------------------
+  ngrok:
+    image: ngrok/ngrok:latest
+    container_name: prpilot-ngrok
+    profiles:
+      - dev
+    restart: unless-stopped
+    command: http prpilot:8000 --log stdout
+    environment:
+      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN}
+    depends_on:
+      - prpilot
+    ports:
+      - "4040:4040"   # ngrok web inspector at http://localhost:4040
+
+  # ---------------------------------------------------------------------------
   # Ollama — local LLM server (used when LLM_TIER=local)
-  # Runs always so the container is available if someone switches tier.
-  # Pull your model after first start: docker exec prpilot-ollama ollama pull llama3.1
+  # Profile: local (only starts with --profile local)
+  # Pull your model after first start:
+  #   docker exec prpilot-ollama ollama pull llama3.1
   # ---------------------------------------------------------------------------
   ollama:
     image: ollama/ollama:latest
     container_name: prpilot-ollama
+    profiles:
+      - local
     restart: unless-stopped
     ports:
       - "11434:11434"
