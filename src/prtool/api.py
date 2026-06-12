@@ -173,7 +173,7 @@ async def github_webhook(request: Request, x_hub_signature_256: str = Header(Non
     action = data.get("action")
 
     # Trigger only on PR open or new commits pushed
-    if action not in ["opened", "synchronize"]:
+    if action not in ["opened", "synchronize", "reopened"]:
         return {"status": "ignored", "reason": f"action '{action}' not handled"}
 
     repo_name  = data["repository"]["full_name"]
