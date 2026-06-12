@@ -29,6 +29,30 @@ app.include_router(dashboard_router)
 # Initialise SQLite tables once at startup
 init_db()
 
+# ---------------------------------------------------------------------------
+# Diff size limits per tier
+# Free tier: Groq has 12k TPM limit — truncate large diffs
+# Paid/Local: no limit — pass full diff always
+# ---------------------------------------------------------------------------
+_FREE_DIFF_CHAR_LIMIT = 12000   # ~300 lines — safe for Groq 12k TPM
+
+
+def _truncate_diff_for_tier(diff: str, tier: str) -> tuple[str, bool]:
+    """
+    Returns (diff_to_use, was_truncated).
+    Free tier truncates to _FREE_DIFF_CHAR_LIMIT chars.
+    Paid and local tiers always get the full diff.
+    """
+    if tier == "free" and len(diff) > _FREE_DIFF_CHAR_LIMIT:
+        truncated = diff[:_FREE_DIFF_CHAR_LIMIT]
+        # Trim to last complete line so we don't cut mid-line
+        last_newline = truncated.rfind("\n")
+        if last_newline > 0:
+            truncated = truncated[:last_newline]
+        print(f"⚠️  Free tier: diff truncated from {len(diff)} to {len(truncated)} chars")
+        return truncated, True
+    return diff, False
+
 
 def _detect_tech_stack(diff: str) -> str:
     """
@@ -165,8 +189,8 @@ async def github_webhook(request: Request, x_hub_signature_256: str = Header(Non
         print(f"❌ Could not fetch PR details: {e}")
         gh.post_pr_comment(
             repo_name, pr_num,
-            f"###  MergeMate AI Audit\n\n"
-            f" Could not start review: `{e}`\n\n"
+            f"### PR-Pilot AI Audit\n\n"
+            f"Could not start review: `{e}`\n\n"
             f"Please ensure the PR contains code changes and try again."
         )
         return {"status": "error", "reason": str(e)}
@@ -176,7 +200,7 @@ async def github_webhook(request: Request, x_hub_signature_256: str = Header(Non
     run_id     = str(uuid.uuid4())
     start_time = time.time()
 
-    print(f" [AUDIT STARTING] PR #{pr_num} on {repo_name} | run_id={run_id}")
+    print(f"🚀 [AUDIT STARTING] PR #{pr_num} on {repo_name} | run_id={run_id}")
 
     # 6. Log run start to SQLite
     log_run_started(
@@ -188,12 +212,18 @@ async def github_webhook(request: Request, x_hub_signature_256: str = Header(Non
         tech_stack=tech_stack,
     )
 
-    diff_lines = len([l for l in details["diff"].splitlines() if l.startswith("+")])
-    pr_scope = "large" if diff_lines > 200 else "medium" if diff_lines > 50 else "small"
+    # 7. Apply tier-based diff truncation
+    # Free tier: truncate to stay within Groq's 12k TPM limit
+    # Paid/local tier: always pass the full diff for complete analysis
+    llm_tier = os.getenv("LLM_TIER", "free").lower()
+    diff_to_use, was_truncated = _truncate_diff_for_tier(details["diff"], llm_tier)
 
-    # 7. Build inputs — all keys must match {brackets} in tasks.yaml
+    diff_lines = len([l for l in diff_to_use.splitlines() if l.startswith("+")])
+    pr_scope   = "large" if diff_lines > 200 else "medium" if diff_lines > 50 else "small"
+
+    # 8. Build inputs — all keys must match {brackets} in tasks.yaml
     inputs = {
-        "diff":              details["diff"],
+        "diff":              diff_to_use,
         "pr_body":           details["body"],
         "repo_name":         repo_name,
         "tech_stack":        tech_stack,
@@ -203,24 +233,25 @@ async def github_webhook(request: Request, x_hub_signature_256: str = Header(Non
         "current_datetime":  datetime.now().strftime("%Y-%m-%d %H:%M %Z"),
         "pr_scope":          pr_scope,
         "diff_line_count":   diff_lines,
+        "diff_truncated":    was_truncated,   # lets decider note truncation in comment
     }
 
-    # 8. Run the crew in a thread — never block the async event loop
+    # 9. Run the crew in a thread — never block the async event loop
     result = None
     try:
         crew_instance = PrToolCrew().crew()
         result = await asyncio.to_thread(crew_instance.kickoff, inputs=inputs)
     except Exception as e:
         duration = round(time.time() - start_time, 1)
-        print(f" Crew failed: {e}")
+        print(f"❌ Crew failed: {e}")
         log_run_failed(run_id, str(e), duration)
         _post_fallback_comment(gh, repo_name, pr_num, str(e), result)
         return {"status": "error", "reason": str(e)}
 
     duration = round(time.time() - start_time, 1)
-    print(f"\n [AUDIT COMPLETE] duration={duration}s")
+    print(f"\n✅ [AUDIT COMPLETE] duration={duration}s")
 
-    # 9. Post the verdict comment back to GitHub
+    # 10. Post the verdict comment back to GitHub
     comment_posted = False
     verdict_str    = "unknown"
     confidence     = 0.0
@@ -230,7 +261,7 @@ async def github_webhook(request: Request, x_hub_signature_256: str = Header(Non
     try:
         verdict = result.pydantic
         if verdict and verdict.comment_draft:
-            print(" Posting verdict to GitHub...")
+            print("📝 Posting verdict to GitHub...")
             final_comment = f"### PR-Pilot AI Audit\n\n{verdict.comment_draft}"
             gh.post_pr_comment(repo_name, pr_num, final_comment)
             comment_posted = True
@@ -241,7 +272,7 @@ async def github_webhook(request: Request, x_hub_signature_256: str = Header(Non
             )
             confidence = float(verdict.confidence)
         elif result.raw:
-            print("  No structured verdict — posting raw output.")
+            print("⚠️  No structured verdict — posting raw output.")
             gh.post_pr_comment(
                 repo_name, pr_num,
                 f"### PR-Pilot AI Audit\n\n{result.raw}"
@@ -273,13 +304,13 @@ async def github_webhook(request: Request, x_hub_signature_256: str = Header(Non
                     output=getattr(task_out, "raw", "") or "",
                 )
         except Exception as log_err:
-            print(f"  Could not log agent steps: {log_err}")
+            print(f"⚠️  Could not log agent steps: {log_err}")
 
     except Exception as e:
-        print(f" Error posting comment: {e}")
+        print(f"❌ Error posting comment: {e}")
         _post_fallback_comment(gh, repo_name, pr_num, str(e), result)
 
-    # 10. Log run completion
+    # 11. Log run completion
     log_run_completed(
         run_id=run_id,
         verdict=verdict_str,
